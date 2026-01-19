@@ -75,7 +75,7 @@ ShopConfig.Storage = {
 		["CurrencyPack"] = {
 			Price = 143,
 			Currency = "Robux",
-			PassID = 1234,
+			PassID = 1234, -- Atenção: Se for Gamepass, o jogador só recebe UMA VEZ. Se quiser que comprem várias vezes, use ProductID.
 			GiftProductID = 1234,
 			Contents = {
 				Currency = {Plutonium = 750},

@@ -58,6 +58,18 @@ BrainrotConfig.Brainrots = {
 		WalkAnimation = "rbxassetid://76231597242103",
 	},
 
+	-- ADICIONADO: Faltava este brainrot usado no PremiumTank_4
+	Bonebinni_Gussini = {
+		Rarity = "Rare",
+		Value = 2000,
+		Speed = 22,
+		Health = 100,
+		Color = Color3.fromRGB(100, 200, 255),
+		ProductID = nil,
+		ImageId = "rbxassetid://123456789", -- Substitua pelo ID real se tiver
+		WalkAnimation = "rbxassetid://123456789",
+	},
+
 	Cauldrona_Signora = {
 		Rarity = "Rare",
 		Value = 1000,
@@ -112,7 +124,7 @@ BrainrotConfig.Brainrots = {
 		ImageId = "rbxassetid://82424729774556",
 		WalkAnimation = "rbxassetid://77502583659176",
 	},
---
+
 	Tralalenstein_Tralala = {
 		Rarity = "Legendary",
 		Value = 50000,
@@ -146,39 +158,6 @@ BrainrotConfig.Brainrots = {
 		ImageId = "rbxassetid://123023867189749",
 		WalkAnimation = "rbxassetid://104473468092670",
 	},
-
-	--[[Tung_Tung_Tung_Dracul = {
-		Rarity = "Rare",
-		Value = 0,
-		Speed = 20,
-		Health = 100,
-		Color = Color3.fromRGB(120, 0, 40),
-		ProductID = nil,
-		ImageId = "rbxassetid://112575216671861",
-		WalkAnimation = "rbxassetid://129267361407325",
-	}
-
-	Spooky_Kar_Kir_Kur = {
-		Rarity = "Epic",
-		Value = 0,
-		Speed = 22,
-		Health = 150,
-		Color = Color3.fromRGB(90, 90, 120),
-		ProductID = nil,
-		ImageId = "rbxassetid://97917562994041",
-		WalkAnimation = "rbxassetid://107635656141340",
-	},
-
-	--[[La_Spooky_Sekolah = {
-		Rarity = "Epic",
-		Value = 0,
-		Speed = 22,
-		Health = 150,
-		Color = Color3.fromRGB(80, 80, 120),
-		ProductID = nil,
-		ImageId = "rbxassetid://98089358965598",
-		WalkAnimation = "rbxassetid://107635656141340",
-	},--]]
 
 	Frigo_Bonemelo = {
 		Rarity = "Uncommon",

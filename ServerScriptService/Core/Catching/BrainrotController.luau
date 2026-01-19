@@ -41,17 +41,24 @@ function BrainrotController.startBrainrot(brainrot: Model, PathPosition: Vector3
 
 	local speed = BrainrotConfig.getSpeed(brainrot.Name) or 16
 
+	--// FIX: Animação e Animator
 	local WalkAnimationId = BrainrotConfig.getWalkAnimation(brainrot.Name)
-	local WalkAnimation = Instance.new("Animation")
+	if not WalkAnimationId then warn("No walk anim for", brainrot.Name) return end
 
+	local WalkAnimation = Instance.new("Animation")
 	WalkAnimation.AnimationId = WalkAnimationId
 
-	local animator = brainrot:FindFirstChild("AnimationController") and brainrot.AnimationController:FindFirstChild("Animator")
+	local animController = brainrot:FindFirstChild("AnimationController") or brainrot:FindFirstChild("Humanoid")
+	if not animController then return end
+
+	local animator = animController:FindFirstChild("Animator")
 	if not animator then
 		animator = Instance.new("Animator")
-		animator.Parent = brainrot.AnimationController
+		animator.Parent = animController
 	end
-	local walkAnim = animator:LoadAnimation(WalkAnimation)
+
+	local walkAnimTrack = animator:LoadAnimation(WalkAnimation)
+	--// FIM FIX
 
 	brainrot:SetAttribute("Walking", false)
 
@@ -61,7 +68,8 @@ function BrainrotController.startBrainrot(brainrot: Model, PathPosition: Vector3
 			brainrot:SetAttribute("Walking", true)
 
 			local HoleTween = tween(brainrot, 50, hole.Position + heightOffset)
-			
+
+			--// FIX: Cursor / Crosshair visibilidade
 			local crosshair = ReplicatedStorage.Assets.VFX.Crosshair:Clone()
 			crosshair.Parent = primary
 			crosshair.Attachment.ParticleEmitter:Emit(1)
@@ -72,7 +80,12 @@ function BrainrotController.startBrainrot(brainrot: Model, PathPosition: Vector3
 			weld.C1 = CFrame.new(0, 0, 0)
 			weld.Parent = crosshair
 
-			Debris:AddItem(crosshair, 1)
+			-- Remove o crosshair apenas quando o tween terminar
+			task.spawn(function()
+				if HoleTween then HoleTween.Completed:Wait() end
+				if crosshair then crosshair:Destroy() end
+			end)
+			--// FIM FIX
 
 			if hole then
 				for _, v in ipairs(hole:GetDescendants()) do
@@ -89,29 +102,38 @@ function BrainrotController.startBrainrot(brainrot: Model, PathPosition: Vector3
 				end
 			end
 
-			HoleTween.Completed:Wait()
-			walkAnim:Play()
+			if HoleTween then HoleTween.Completed:Wait() end
+			walkAnimTrack:Play() -- Toca a animação
 
 			local distracted = true
 			local tweening = false
+			local BrainTween
 
 			while distracted do
 				local anyBasePart = brainrot:FindFirstChildWhichIsA("BasePart")
 				if not anyBasePart then return end
-				
+
+				--// FIX: Lógica de fugir
+				-- Se o jogador estiver LONGE (> range), ele vai até o cérebro (isca)
+				-- Se o jogador chegar PERTO (<= range), ele para de se distrair e foge
 				if (PlayerRootPart.Position - anyBasePart.Position).Magnitude > range then
 					if tweening == false then
-						local BrainTween = tween(brainrot, speed, Brain.BrainBottom.Position + heightOffset)
+						BrainTween = tween(brainrot, speed, Brain.BrainBottom.Position + heightOffset)
 						tweening = true
 					end
 				else
+					-- Jogador chegou perto, foge!
 					distracted = false
+					if BrainTween then BrainTween:Cancel() end -- Para de ir até o cérebro
 					break
 				end
-				task.wait(0.5)
+				task.wait(0.2) -- Check mais rápido
 			end
 
-			local Session = brainrot.Parent.Parent
+			--// Lógica de Fuga (Escape)
+			local Session = brainrot.Parent and brainrot.Parent.Parent
+			if not Session then return end
+
 			local Waypoints = Session.Waypoints:GetChildren()
 
 			table.sort(Waypoints, function(a, b)
@@ -119,7 +141,6 @@ function BrainrotController.startBrainrot(brainrot: Model, PathPosition: Vector3
 			end)
 
 			local BrainrotEnd
-
 			if brainrot.PrimaryPart.Position.Z < PlayerRootPart.Position.Z then
 				BrainrotEnd = Session.Ends.Start
 			else
@@ -128,12 +149,12 @@ function BrainrotController.startBrainrot(brainrot: Model, PathPosition: Vector3
 
 			local EndPos = BrainrotEnd.Position
 
+			-- Encontra waypoints mais próximos para fugir suavemente
 			local closest, second, third
 			local d1, d2, d3 = math.huge, math.huge, math.huge
 
 			for _, v in Waypoints do
 				local d = (brainrot.PrimaryPart.Position - v.Position).Magnitude
-
 				if d < d1 then
 					third, d3 = second, d2
 					second, d2 = closest, d1
@@ -149,26 +170,18 @@ function BrainrotController.startBrainrot(brainrot: Model, PathPosition: Vector3
 			local BrainrotZ = brainrot.PrimaryPart.Position.Z
 			local chosenWaypoint
 
+			-- Escolhe o waypoint que afasta do jogador
 			if BrainrotZ < PlayerRootPart.Position.Z then
-				if closest.Position.Z < BrainrotZ then
-					chosenWaypoint = closest
-				elseif second.Position.Z < BrainrotZ then
-					chosenWaypoint = second
-				else
-					chosenWaypoint = third
-				end
+				if closest.Position.Z < BrainrotZ then chosenWaypoint = closest
+				elseif second.Position.Z < BrainrotZ then chosenWaypoint = second
+				else chosenWaypoint = third end
 			else
-				if closest.Position.Z > BrainrotZ then
-					chosenWaypoint = closest
-				elseif second.Position.Z > BrainrotZ then
-					chosenWaypoint = second
-				else
-					chosenWaypoint = third
-				end
+				if closest.Position.Z > BrainrotZ then chosenWaypoint = closest
+				elseif second.Position.Z > BrainrotZ then chosenWaypoint = second
+				else chosenWaypoint = third end
 			end
 
-			local startIndex
-
+			local startIndex = 1
 			for i, v in Waypoints do
 				if v == chosenWaypoint then
 					startIndex = i
@@ -180,29 +193,24 @@ function BrainrotController.startBrainrot(brainrot: Model, PathPosition: Vector3
 
 			local function goTo(pos)
 				if not brainrot or not brainrot.PrimaryPart then return end
-				
-				print(pos)
-				
-				local t = tween(brainrot, speed, Vector3.new(
-					pos.X,
-					brainrot.PrimaryPart.Position.Y,
-					pos.Z
-					))
-				t.Completed:Wait()
+				local t = tween(brainrot, speed, Vector3.new(pos.X, brainrot.PrimaryPart.Position.Y, pos.Z))
+				if t then t.Completed:Wait() end
 			end
 
-			goTo(chosenWaypoint.Position)
+			if chosenWaypoint then
+				goTo(chosenWaypoint.Position)
+			end
 
 			local i = startIndex + step
 			while Waypoints[i] do
 				goTo(Waypoints[i].Position)
 				i += step
 			end
-			
+
 			goTo(EndPos)
 
-			WalkAnimation:Destroy()
-			brainrot:Destroy()
+			if WalkAnimation then WalkAnimation:Destroy() end
+			if brainrot then brainrot:Destroy() end -- Isso aciona o ChildRemoved no CatchingSession
 		end
 		if not Brain.Parent then break end
 		task.wait(1)

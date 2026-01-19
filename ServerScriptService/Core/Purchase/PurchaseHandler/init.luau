@@ -102,7 +102,7 @@ local function processProductReceipt(receiptInfo)
 
 	local itemName, category = ShopConfig.getItemFromProductID(receiptInfo.ProductId)
 	if not itemName or not category then
-		warn(`Unknown ProductId: {receiptInfo.ProductId}`)
+		warn(`[PurchaseHandler] Unknown ProductId: {receiptInfo.ProductId}. Check ShopConfig!`)
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 
@@ -131,6 +131,8 @@ local function processProductReceipt(receiptInfo)
 		end)
 
 		return Enum.ProductPurchaseDecision.PurchaseGranted
+	else
+		warn(`[PurchaseHandler] Grant failed for {itemName} (Category: {category})`)
 	end
 
 	return Enum.ProductPurchaseDecision.NotProcessedYet

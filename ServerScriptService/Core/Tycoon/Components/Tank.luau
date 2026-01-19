@@ -13,7 +13,15 @@ local GeneralConfig = require(Configs.GeneralConfig)
 local CurrencyManager = require(ServerScriptService.Core.Player.CurrencyManager)
 local TycoonTypes = require(ServerScriptService.Types.TycoonTypes)
 
-local DEV_UNLOCK_ALL_TANKS: boolean = true
+local DEV_UNLOCK_ALL_TANKS: boolean = false
+
+--// Helper //--
+local function FormatNumber(n: number): string
+	if n >= 1e9 then return string.format("%.1fB", n / 1e9)
+	elseif n >= 1e6 then return string.format("%.1fM", n / 1e6)
+	elseif n >= 1e3 then return string.format("%.1fk", n / 1e3)
+	else return tostring(n) end
+end
 
 --// Setup //--
 local Tank = {}
@@ -37,7 +45,7 @@ function Tank._initializeTanks(self: Tank)
 	for tankName, tankConfig in TankConfig.getAllTanks() do
 		self.Tanks[tankName] = {
 			Name = tankName,
-			Unlocked = tankConfig.IsPremium ~= nil,
+			Unlocked = false,
 			Level = tankConfig.StartingLevel,
 			Brainrot = tankConfig.Brainrot or nil,
 			BrainrotCount = 0,
@@ -50,13 +58,17 @@ function Tank._initializeTanks(self: Tank)
 			Config = tankConfig,
 			ItemTravelTime = 0,
 			Debounce = false,
+			Prompt = nil,
 		}
 	end
 
-	-- First tank unlocked
 	if not DEV_UNLOCK_ALL_TANKS then
 		if self.Tanks["Tank_1"] then
 			self.Tanks["Tank_1"].Unlocked = true
+		end
+	else
+		for _, data in pairs(self.Tanks) do
+			data.Unlocked = true
 		end
 	end
 end
@@ -77,12 +89,15 @@ function Tank.setupInstances(self: Tank, building: Model)
 			tankData.Dropper = tankModel:WaitForChild("Dropper") :: Part
 			tankData.Cell = tankModel:WaitForChild("Cell") :: Part
 
-			-- Button (non-premium)
-			if not tankData.Config.IsPremium then
-				tankData.Button = tankModel:WaitForChild("Button") :: Part
+			-- Button
+			-- CORREÇÃO: Permite criar botão mesmo se for Premium, desde que o modelo tenha o botão.
+			tankData.Button = tankModel:FindFirstChild("Button") :: Part
+			if tankData.Button then
 				local prox = Instance.new("ProximityPrompt", tankData.Button)
-				prox.ObjectText = "Brainrot Tank"
-				
+				tankData.Prompt = prox 
+
+				self:updatePrompt(tankName)
+
 				local conn = prox.Triggered:Connect(function(plr: Player)
 					self:_onButtonPressed(plr, tankName)
 				end)
@@ -105,6 +120,24 @@ function Tank.setupInstances(self: Tank, building: Model)
 			-- Travel time
 			tankData.ItemTravelTime = self:_calculateItemTravelTime(tankData)
 		end
+	end
+end
+
+function Tank.updatePrompt(self: Tank, tankName: string)
+	local tankData = self.Tanks[tankName]
+	if not tankData or not tankData.Prompt then return end
+
+	if not tankData.Unlocked then
+		local price = tankData.Config.Price or 0
+		tankData.Prompt.ObjectText = "Machine"
+		if price > 0 then
+			tankData.Prompt.ActionText = "Buy: $" .. FormatNumber(price)
+		else
+			tankData.Prompt.ActionText = "Claim (Free)"
+		end
+	else
+		tankData.Prompt.ObjectText = tankData.Config.DisplayName or tankData.Name
+		tankData.Prompt.ActionText = "Add Brainrot"
 	end
 end
 
@@ -132,35 +165,28 @@ function Tank._onButtonPressed(self: Tank, player: Player, tankName: string)
 		tankData.Debounce = false
 	end)
 
-	local character = player.Character
-	--local player = character and character:IsA("Model")
-	--	and game.Players:GetPlayerFromCharacter(character)
-
 	if not player or player ~= self.Base.Owner then
 		return
 	end
 
 	-- Purchasing flow:
-	
 	if not tankData.Unlocked then
-		tankData.Unlocked = true
-		--self:purchaseUnlock(tankName)
-		--return
+		self:purchaseUnlock(tankName)
+		return
 	end
 
-	-- Transfer brainrots from cage up to required
-	self:purchaseAddBrainrot(tankName, math.huge) -- adds as many as needed up to Required
+	self:purchaseAddBrainrot(tankName, math.huge)
 end
 
 -- Actions (no purchase)
 function Tank.unlockTank(self: Tank, tankName: string): boolean
 	local data = self.Tanks[tankName]
 	if not data then return false end
-	if data.Unlocked then
-		warn(`[Base {self.Base.ID}] Tank already unlocked: {tankName}`)
-		return false
-	end
+	if data.Unlocked then return false end
+
 	data.Unlocked = true
+	self:updatePrompt(tankName)
+
 	print(`[Base {self.Base.ID}] Unlocked {tankName}`)
 	return true
 end
@@ -181,7 +207,6 @@ function Tank.upgradeTank(self: Tank, tankName: string): boolean
 
 	tankData.Level += 1
 
-	-- Refresh uses based on level if tank currently has brainrots
 	if tankData.BrainrotCount >= tankData.Config.Required then
 		local upgradeInfo = TankConfig.getUpgradeInfo(tankData.Level)
 		tankData.UsesRemaining = upgradeInfo and upgradeInfo.Uses or tankData.UsesRemaining
@@ -199,28 +224,21 @@ end
 
 function Tank.addBrainrotToTank(self: Tank, tankName: string, amount: number): (number, boolean)
 	local success = false
-	
-	--print(self.Tanks)
-	
+
 	local tankData = self.Tanks[tankName]
-	if not tankData or amount <= 0 then print("A") return 0, success end
-	if not tankData.Unlocked then print("B") return 0, success end
-	print(tankData) 
+	if not tankData or amount <= 0 then return 0, success end
+	if not tankData.Unlocked then return 0, success end
+
 	local needed = math.max(0, (tankData.Config.Required or 0) - tankData.BrainrotCount)
-	print(tankData.Config.Required)
-	print(tankData.BrainrotCount)
-	print(needed)
 	local toAdd = math.min(amount, needed)
-	if toAdd <= 0 then print("C") return 0, success end
+	if toAdd <= 0 then return 0, success end
 
 	tankData.BrainrotCount += toAdd
 	if tankData.Cell then
 		tankData.Cell:SetAttribute("Count", tankData.BrainrotCount)
 	end
 
-	-- If now satisfied, ensure uses and start production
 	if tankData.BrainrotCount >= tankData.Config.Required then
-		print("D")
 		if tankData.UsesRemaining == 0 then
 			local info = TankConfig.getUpgradeInfo(tankData.Level)
 			tankData.UsesRemaining = info and info.Uses or 0
@@ -233,40 +251,29 @@ function Tank.addBrainrotToTank(self: Tank, tankName: string, amount: number): (
 		end
 
 		self.Base.Production:startProduction(tankData)
-		
 		success = true
 	end
 
---	print(`[Base {self.Base.ID}] Added ${toAdd} to ${tankName} (brainrot: ${tankData.Brainrot or "nil"})`)
 	return toAdd, success
 end
 
 function Tank.removeBrainrotOfTank(self: Tank, tankName: string)
 	local tankData = self.Tanks[tankName]
 	if not tankData then return end
-	
+
 	self.Base.Production:_stopProduction(tankData)
 end
 
 function Tank.transferBrainrotFromCage(self: Tank, tankName: string): number
 	local tankData = self.Tanks[tankName]
 	if not tankData then return 0 end
-	if not tankData.Brainrot then
-		print(`[Base {self.Base.ID}] ${tankName} has no brainrot assigned`)
-		return 0
-	end
+	if not tankData.Brainrot then return 0 end
 
 	local needed = math.max(0, (tankData.Config.Required or 0) - tankData.BrainrotCount)
 	if needed <= 0 then return 0 end
 
-	-- Pull up to needed units from Cage
-	print(needed)
-	print(self.Base.Cage.Contents)
 	local removed = self.Base.Cage:removeBrainrots({ [tankData.Brainrot] = needed })
-	if removed <= 0 then
-		print(`[Base {self.Base.ID}] No ${tankData.Brainrot} in cage`)
-		return 0
-	end
+	if removed <= 0 then return 0 end
 
 	return self:addBrainrotToTank(tankName, removed)
 end
@@ -276,17 +283,10 @@ function Tank.setPremiumTankBrainrot(self: Tank, tankName: string, brainrotName:
 	if not tankData then return false end
 
 	local config = TankConfig.getTankInfo(tankName)
-	if not config or not config.IsPremium then
-		warn(`[Base {self.Base.ID}] Not a premium tank: {tankName}`)
-		return false
-	end
+	if not config or not config.IsPremium then return false end
 
-	if not BrainrotConfig.isPremium(brainrotName) then
-		warn(`[Base {self.Base.ID}] Brainrot not premium: {brainrotName}`)
-		return false
-	end
+	if not BrainrotConfig.isPremium(brainrotName) then return false end
 
-	-- Free reassignment allowed
 	tankData.Brainrot = brainrotName
 
 	if tankData.Dropper then
@@ -304,7 +304,7 @@ function Tank.purchaseUnlock(self: Tank, tankName: string): boolean
 	if DEV_UNLOCK_ALL_TANKS then
 		return self:unlockTank(tankName)
 	end
-	
+
 	local price = TankConfig.getTankInfo(tankName).Price
 
 	if not price then
@@ -317,43 +317,40 @@ function Tank.purchaseUnlock(self: Tank, tankName: string): boolean
 		return false
 	end
 
-	return self:unlockTank(tankName)
+	local unlocked = self:unlockTank(tankName)
+	if unlocked then
+		self:updatePrompt(tankName)
+	end
+
+	return unlocked
 end
 
 function Tank.purchaseUpgrade(self: Tank, tankName: string): boolean
 	local tankData = self.Tanks[tankName]
-	if not tankData then warn(`[Base {self.Base.ID}] No tank data for {tankName}`) return false end
-	if not tankData.Unlocked then warn(`[Base {self.Base.ID}] Tank not unlocked: {tankName}`) return false end
-	if TankConfig.isMaxLevel(tankData.Level) then warn(`[Base {self.Base.ID}] Already max level: {tankName}`) return false end
+	if not tankData then return false end
+	if not tankData.Unlocked then return false end
+	if TankConfig.isMaxLevel(tankData.Level) then return false end
 
 	local nextLevel = tankData.Level + 1
-
-	local price: number? = nil
+	local price = nil
 	local info = TankConfig.getUpgradeInfo and TankConfig.getUpgradeInfo(nextLevel)
+
 	if info and info.Price then
 		price = info.Price
 	elseif TankConfig.calculateUpgradePrice then
 		price = TankConfig.calculateUpgradePrice(tankName, nextLevel)
 	end
 
-	if not price then
-		warn(`[Base {self.Base.ID}] No upgrade price for {tankName} level {nextLevel}`)
-		return false
-	end
+	if not price then return false end
 
 	local result = CurrencyManager.purchase(self.Base.Owner, price)
-	if not result or not result.success then
-		warn(`[Base {self.Base.ID}] Purchase failed for upgrade: {tankName} level {nextLevel}`)
-		return false
-	end
+	if not result or not result.success then return false end
 
 	return self:upgradeTank(tankName)
 end
 
 
 function Tank.purchaseAddBrainrot(self: Tank, tankName: string, amount: number): number
-	-- For now, "purchase add" means transfer from cage up to required.
-	-- Future: charge currency per unit if desired.
 	return self:transferBrainrotFromCage(tankName)
 end
 
@@ -379,10 +376,8 @@ function Tank._calculateItemTravelTime(self: Tank, tankData: TycoonTypes.TankDat
 		return 0
 	end
 
-	-- Dropper to Checkpoint0
 	local checkpoint0 = tankData.Dropper:FindFirstChild("Checkpoint0")
 	if not checkpoint0 or not tankData.Dropper then
-		warn(`[Base {self.Base.ID}][Tank] Checkpoint0 or Dropper missing in ${tankData.Name}`)
 		return 0
 	end
 
@@ -396,10 +391,7 @@ function Tank._calculateItemTravelTime(self: Tank, tankData: TycoonTypes.TankDat
 
 	for _, checkpointInfo in checkpoints do
 		local targetAttachment = self.Base.ConveyorCheckpoints[checkpointInfo.Number]
-		if not targetAttachment then
-			warn(`[Base {self.Base.ID}][Tank] Checkpoint ${checkpointInfo.Number} not found`,self.Base.ConveyorCheckpoints)
-			continue
-		end
+		if not targetAttachment then continue end
 
 		local distance = (targetAttachment.WorldPosition - previousCheckpoint.WorldPosition).Magnitude
 		local speed = GeneralConfig.ConveyorSpeed[checkpointInfo.Movement] or 1
@@ -439,6 +431,8 @@ function Tank.deserializeData(self: Tank, saved)
 			tankData.BrainrotCount = data.BrainrotCount
 			tankData.UsesRemaining = data.UsesRemaining
 			tankData.UsesMax = data.UsesMax or tankData.UsesRemaining
+
+			self:updatePrompt(name)
 
 			if tankData.Dropper then
 				tankData.Dropper:SetAttribute("Item", tankData.Brainrot or "")
@@ -495,7 +489,8 @@ end
 
 function Tank._getCapacity(self: Tank, tankData: TycoonTypes.TankData, level: number): number
 	local upgradeInfo = TankConfig.getUpgradeInfo(level)
-	return (upgradeInfo and (upgradeInfo.Capacity or upgradeInfo.Required)) or tankData.Config.Required or 0
+	-- CORREÇÃO: Adicionado check por 'Amount', pois é o que está no Config
+	return (upgradeInfo and (upgradeInfo.Capacity or upgradeInfo.Amount or upgradeInfo.Required)) or tankData.Config.Required or 0
 end
 
 function Tank._buildTankSnapshot(self: Tank, tankName: string)
@@ -555,6 +550,7 @@ function Tank._buildTankSnapshot(self: Tank, tankName: string)
 		photo = photo,
 
 		unlocked = tankData.Unlocked == true,
+		isPremium = tankData.Config.IsPremium or false,
 		brainrot = tankData.Brainrot or "",
 		brainrotCount = tankData.BrainrotCount or 0,
 		usesRemaining = tankData.UsesRemaining or 0,
@@ -570,18 +566,18 @@ end
 
 function Tank.getAllMachinesSnapshot(self: Tank)
 	local list = {}
-	
+
 	for tankName in self.Tanks do
 		local snap = self:_buildTankSnapshot(tankName)
 		if snap and snap.unlocked then
 			list[#list + 1] = snap
 		end
 	end
-	
+
 	if #list == 0 then
 		return nil
 	end
-	
+
 	return list
 end
 

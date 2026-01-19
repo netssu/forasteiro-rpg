@@ -48,21 +48,22 @@ local function LoadProfile(player: Player): Data
 
 	profile:AddUserId(player.UserId)
 	profile:Reconcile()
-	
+
 	--[[
 	profile.OnSessionEnd:Connect(function()
 		DataService.Profiles[player.UserId] = nil
 		player:Kick("Profile session ended")
 	end)
 	]]--
-	
+
 	if player.Parent == Players then
 		DataService.Profiles[player.UserId] = profile
 	else
 		profile:EndSession()
 	end
-	
-	return profile.Data
+
+	--// CORREÇÃO AQUI: Retornar o profile, não profile.Data
+	return profile 
 end
 
 local function SaveProfile(player: Player)
@@ -70,20 +71,20 @@ local function SaveProfile(player: Player)
 	if profile then
 		profile:EndSession()
 		DataService.Profiles[player.UserId] = nil
-		
+
 		return profile.Data
 	end
 end
 
 local function GetData(player: Player): Data
 	local profile = DataService.Profiles[player.UserId]
-	
+
 	local startTick = tick()
 
 	while not profile do
 		task.wait(0.1)
 		profile = DataService.Profiles[player.UserId]
-		
+
 		if tick() - startTick >= MaxWaitForProfile and not profile then return nil end
 	end
 
@@ -139,13 +140,13 @@ end
 -- leaderboard
 local function RegisterLeaderboard(leaderboardName: string): OrderedDataStore
 	leaderboardName = leaderboardName .. dataName
-	
+
 	local leaderboard = DataService.Leaderboards[leaderboardName]
 	if leaderboard then return leaderboard end
-	
+
 	leaderboard = DataStoreService:GetOrderedDataStore(leaderboardName)
 	DataService.Leaderboards[leaderboardName] = leaderboard
-	
+
 	return leaderboard
 end
 
@@ -159,12 +160,12 @@ local function UpdateLeaderboard(player: Player, leaderboardName: string, value:
 	local success, err = pcall(function()
 		leaderboard:SetAsync(player.UserId, value)
 	end)
-	
+
 	if not success then
 		warn(`[DataService] Failed to update leaderboard {leaderboardName} for {player.Name}: {err}`, value)
 		return false
 	end
-	
+
 	return true
 end
 

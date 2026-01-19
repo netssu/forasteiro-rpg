@@ -1,8 +1,8 @@
 {
   "className": "Sound",
   "properties": {
-    "SourceAssetId": 138544302836766.0,
+    "Looped": true,
     "AudioContent": "rbxassetid://80365581500727",
-    "Looped": true
+    "SourceAssetId": 138544302836766.0
   }
 }

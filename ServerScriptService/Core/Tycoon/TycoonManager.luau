@@ -29,15 +29,15 @@ function TycoonManager.initialize()
 		Bases[index] = Base.new(baseFolder, index)
 		table.insert(AvailableBases, index)
 	end
-	
+
 	AddBrainrotToCage.Event:Connect(function(player, brainrots)
 		print("Trying to put brainrot to cage")
 		TycoonManager.addBrainrotsToCage(player, brainrots)
 	end)
-	
+
 	ReplicatedStorage.Remotes.Events.InstantButton.OnServerEvent:Connect(function(player: Player, tankName: string)
-		--if CurrencyManager.getValue(player, "Plutonium") < 20 then return end
-		TycoonManager.removeBrainrotOfTank(player, tankName)
+		--// FIX: Chama a nova função de Instant Finish em vez de removeBrainrotOfTank
+		TycoonManager.instantFinishTank(player, tankName)
 	end)
 
 	--print(`[TYCOON] Initialized {#Bases} bases`)
@@ -60,21 +60,18 @@ function TycoonManager.assignBase(player: Player, tycoonData: {}?)
 
 	if tycoonData then
 		base:deserializeData(tycoonData)
-		--print(`[TYCOON] Loaded data for {player.Name} on base {baseID}`)
 	end
-	
+
 	if player then
 		player:SetAttribute("Base",`Base_{baseID}`)
 	end
-
-	--print(`[TYCOON] Assigned base {baseID} to {player.Name}`)
 end
 
 function TycoonManager.unassignBase(player: Player)
 	if player then
 		player:SetAttribute("Base",nil)
 	end
-	
+
 	local baseID = ClaimedBases[player]
 	if not baseID then
 		warn("[TYCOON] No base claimed for", player.Name)
@@ -84,8 +81,6 @@ function TycoonManager.unassignBase(player: Player)
 	ClaimedBases[player] = nil
 	Bases[baseID]:unclaim()
 	table.insert(AvailableBases, baseID)
-
-	--print(`[TYCOON] Unassigned base {baseID} from {player.Name}`)
 end
 
 function TycoonManager.getBase(player: Player): Base.Base?
@@ -155,7 +150,6 @@ end
 function TycoonManager.transferBrainrotFromCage(player: Player, tankName: string): number
 	local base = TycoonManager.getBase(player)
 	if not base then return 0 end
-	-- Transfers up to the required amount for the tank
 	return base.Tank:transferBrainrotFromCage(tankName)
 end
 
@@ -171,6 +165,14 @@ function TycoonManager.removeBrainrotOfTank(player: Player, tankName: string)
 	return base.Tank:removeBrainrotOfTank(tankName)
 end
 
+--// FIX: Nova função para finalizar instantaneamente
+function TycoonManager.instantFinishTank(player: Player, tankName: string)
+	local base = TycoonManager.getBase(player)
+	if not base then return end
+	-- Aqui você pode adicionar verificação de custo (ex: Plutonium) se desejar
+	return base.Tank:instantFinish(tankName)
+end
+
 -- Cage
 function TycoonManager.isCageFull(player: Player): (boolean, number)
 	local base = TycoonManager.getBase(player)
@@ -182,7 +184,6 @@ function TycoonManager.isCageFull(player: Player): (boolean, number)
 		totalCount += count
 	end
 
-	-- Note: Cage supports future capacity buffs while  this check uses default config capacity
 	return totalCount >= (GeneralConfig.CAGE_CAPACITY or 0), totalCount, GeneralConfig.CAGE_CAPACITY
 end
 
@@ -193,7 +194,6 @@ function TycoonManager.addBrainrotsToCage(player: Player, brainrots: {[string]: 
 		return 0
 	end
 
-	-- Delegate capacity handling to Cage component; returns actual added count
 	local added = base.Cage:addBrainrots(brainrots)
 	if added <= 0 then
 		--warn("[TYCOON] Cage rejected additions (full or invalid)")

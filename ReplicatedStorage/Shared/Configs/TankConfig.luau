@@ -132,7 +132,7 @@ TankConfig.Tanks = {
 			{Number = 4, Movement = "Moving"},
 		}
 	},
-	
+
 	Tank_10 = {
 		Brainrot = "Boneca",
 		StartingLevel = 1,
@@ -165,12 +165,12 @@ TankConfig.Tanks = {
 		}
 	},
 
-	-- Premium Tanks
+	-- Premium Tanks - Configuração "Normal"
 	PremiumTank_1 = {
 		Brainrot = "Frigo_Bonemelo",
-		StartingLevel = 3,
+		StartingLevel = 1, -- Nível 1 para permitir upgrades normais
 		Required = 1,
-		Price = 0,
+		Price = 0, -- Grátis no tycoon (requer gamepass)
 		IsPremium = true,
 		Checkpoints = {
 			{Number = 2, Movement = "Moving"},
@@ -181,7 +181,7 @@ TankConfig.Tanks = {
 
 	PremiumTank_2 = {
 		Brainrot = "Zombie_Footera",
-		StartingLevel = 3,
+		StartingLevel = 1,
 		Required = 1,
 		Price = 0,
 		IsPremium = true,
@@ -191,10 +191,10 @@ TankConfig.Tanks = {
 			{Number = 4, Movement = "Moving"},
 		}
 	},
-	
+
 	PremiumTank_3 = {
-		Brainrot = nil,
-		StartingLevel = 3,
+		Brainrot = "Bonebardiro_Crocodrilo",
+		StartingLevel = 1,
 		Required = 1,
 		Price = 0,
 		IsPremium = true,
@@ -204,10 +204,10 @@ TankConfig.Tanks = {
 			{Number = 4, Movement = "Moving"},
 		}
 	},
-	
+
 	PremiumTank_4 = {
-		Brainrot = nil,
-		StartingLevel = 3,
+		Brainrot = "Bonebinni_Gussini",
+		StartingLevel = 1,
 		Required = 1,
 		Price = 0,
 		IsPremium = true,
@@ -228,7 +228,7 @@ TankConfig.UpgradeLevels = {
 		Price = {
 			Cash = 0,
 			Plutonium = 0,
-		} -- Starting level, no price
+		}
 	},
 	[2] = {
 		Multiplier = 4,
@@ -236,7 +236,7 @@ TankConfig.UpgradeLevels = {
 		Amount = 1,
 		Uses = 120,
 		Price = {
-			Cash = 100, -- Multiplies tank base price by 2
+			Cash = 100,
 			Plutonium = 0
 		}
 	},
@@ -244,7 +244,7 @@ TankConfig.UpgradeLevels = {
 		Multiplier = 8,
 		Cooldown = 1,
 		Amount = 1,
-		Uses = -1, -- Infinite, never removes brainrot
+		Uses = -1,
 		Price = {
 			Cash = 10000,
 			Plutonium = 10
@@ -283,7 +283,14 @@ function TankConfig.calculateUpgradePrice(tankName: string, currentLevel: number
 	local plutoniumPrice = 0
 
 	if upgradeInfo.Price.Cash and upgradeInfo.Price.Cash > 0 then
-		cashPrice = tankInfo.Price * upgradeInfo.Price.Cash
+		-- Para tanques Premium com Price=0, o upgrade seria grátis se multiplicarmos.
+		-- Vamos definir um preço base fixo para upgrades de tanques premium se Price for 0.
+		local basePrice = tankInfo.Price
+		if basePrice == 0 and tankInfo.IsPremium then
+			basePrice = 1000000 -- Exemplo: Valor base alto para upgrades de tanques premium
+		end
+
+		cashPrice = basePrice * upgradeInfo.Price.Cash
 	end
 
 	if upgradeInfo.Price.Plutonium and upgradeInfo.Price.Plutonium > 0 then
@@ -355,13 +362,13 @@ end
 -- Check if brainrot is premium
 function TankConfig.isPremiumBrainrot(name: string): boolean
 	local premiumTanks = TankConfig.getPremiumTanksInfo()
-	
+
 	for tankName, info in premiumTanks do
 		if info.Brainrot == name then
 			return true
 		end
 	end 
-	
+
 	return false
 end
 
