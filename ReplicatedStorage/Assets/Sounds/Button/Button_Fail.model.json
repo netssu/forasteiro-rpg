@@ -1,0 +1,10 @@
+{
+  "className": "Sound",
+  "properties": {
+    "Volume": 2.0,
+    "RollOffMaxDistance": 9450.3525390625,
+    "AudioContent": "rbxassetid://1382489817",
+    "RollOffMinDistance": 9.450352668762207,
+    "RollOffMode": "InverseTapered"
+  }
+}
