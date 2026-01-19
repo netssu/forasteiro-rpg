@@ -1,0 +1,89 @@
+{
+  "className": "ParticleEmitter",
+  "properties": {
+    "Color": {
+      "ColorSequence": {
+        "keypoints": [
+          {
+            "time": 0.0,
+            "color": [
+              1.0,
+              0.47843137,
+              0.23529412
+            ]
+          },
+          {
+            "time": 1.0,
+            "color": [
+              1.0,
+              0.47843137,
+              0.23529412
+            ]
+          }
+        ]
+      }
+    },
+    "Speed": {
+      "NumberRange": [
+        0.01,
+        0.01
+      ]
+    },
+    "Texture": "rbxassetid://95504026887183",
+    "Lifetime": {
+      "NumberRange": [
+        0.05,
+        0.05
+      ]
+    },
+    "Brightness": 5.0,
+    "Rate": 5.0,
+    "Transparency": {
+      "NumberSequence": {
+        "keypoints": [
+          {
+            "time": 0.0,
+            "value": 0.38124996,
+            "envelope": 0.0
+          },
+          {
+            "time": 0.11875,
+            "value": 0.30624998,
+            "envelope": 0.0
+          },
+          {
+            "time": 1.0,
+            "value": 1.0,
+            "envelope": 0.0
+          }
+        ]
+      }
+    },
+    "LockedToPart": true,
+    "EmissionDirection": "Left",
+    "LightEmission": 1.0,
+    "Enabled": false,
+    "Orientation": "VelocityPerpendicular",
+    "Size": {
+      "NumberSequence": {
+        "keypoints": [
+          {
+            "time": 0.0,
+            "value": 0.5,
+            "envelope": 0.0
+          },
+          {
+            "time": 1.0,
+            "value": 0.5,
+            "envelope": 0.0
+          }
+        ]
+      }
+    }
+  },
+  "attributes": {
+    "EmitCount": 1.0,
+    "EmitDelay": 0.0,
+    "EmitDuration": 0.0
+  }
+}

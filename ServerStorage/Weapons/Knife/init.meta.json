@@ -1,0 +1,33 @@
+{
+  "properties": {
+    "WorldPivotData": {
+      "OptionalCFrame": {
+        "position": [
+          -272.0156,
+          2.2875137,
+          165.22235
+        ],
+        "orientation": [
+          [
+            0.9999155,
+            -0.000042991673,
+            0.013077307
+          ],
+          [
+            0.013077378,
+            0.0032872062,
+            -0.99991
+          ],
+          [
+            8.0522274e-19,
+            0.9999947,
+            0.0032874898
+          ]
+        ]
+      }
+    },
+    "CanBeDropped": false,
+    "RequiresHandle": false
+  },
+  "className": "Tool"
+}

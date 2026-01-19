@@ -1,0 +1,108 @@
+{
+  "className": "ParticleEmitter",
+  "properties": {
+    "Color": {
+      "ColorSequence": {
+        "keypoints": [
+          {
+            "time": 0.0,
+            "color": [
+              0.43529412,
+              0.43529412,
+              0.43529412
+            ]
+          },
+          {
+            "time": 1.0,
+            "color": [
+              0.62352943,
+              0.62352943,
+              0.62352943
+            ]
+          }
+        ]
+      }
+    },
+    "Speed": {
+      "NumberRange": [
+        1.0,
+        10.0
+      ]
+    },
+    "Rotation": {
+      "NumberRange": [
+        -90.0,
+        -90.0
+      ]
+    },
+    "Texture": "rbxassetid://716847870",
+    "Drag": 5.0,
+    "LightInfluence": 1.0,
+    "Acceleration": [
+      0.0,
+      1.0,
+      0.0
+    ],
+    "Lifetime": {
+      "NumberRange": [
+        1.0,
+        1.0
+      ]
+    },
+    "WindAffectsDrag": true,
+    "Rate": 57.0,
+    "Transparency": {
+      "NumberSequence": {
+        "keypoints": [
+          {
+            "time": 0.0,
+            "value": 0.8125,
+            "envelope": 0.0
+          },
+          {
+            "time": 1.0,
+            "value": 1.0,
+            "envelope": 0.0
+          }
+        ]
+      }
+    },
+    "SpreadAngle": [
+      10.0,
+      25.0
+    ],
+    "EmissionDirection": "Front",
+    "Enabled": false,
+    "RotSpeed": {
+      "NumberRange": [
+        -30.0,
+        30.0
+      ]
+    },
+    "ZOffset": -1.0,
+    "Size": {
+      "NumberSequence": {
+        "keypoints": [
+          {
+            "time": 0.0,
+            "value": 0.2,
+            "envelope": 0.0
+          },
+          {
+            "time": 0.429,
+            "value": 0.45,
+            "envelope": 0.0
+          },
+          {
+            "time": 1.0,
+            "value": 0.5,
+            "envelope": 0.0
+          }
+        ]
+      }
+    }
+  },
+  "attributes": {
+    "EmitCount": 2.0
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "className": "BlurEffect",
+  "properties": {
+    "Size": 0.5,
+    "Enabled": false
+  }
+}
