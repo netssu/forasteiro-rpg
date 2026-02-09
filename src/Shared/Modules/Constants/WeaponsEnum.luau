@@ -1,3 +1,0 @@
-return {
-	['STICK'] = 'Stick',
-}
