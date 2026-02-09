@@ -16,16 +16,6 @@
       "Packages": {
         "$path": "roblox_packages"
       },
-      "PackagesLocal": {
-        "$path": "roblox_packages_local"
-      }
-    },
-    "ServerScriptService": {
-      "$ignoreUnknownInstances": true,
-      "$path": "src/server",
-      "ServerPackages": {
-        "$path": "roblox_server_packages"
-      }
     },
     "StarterPlayer": {
       "StarterPlayerScripts": {

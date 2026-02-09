@@ -4,7 +4,8 @@ local Framework = require(ReplicatedStorage.Packages.Framework)
 
 Framework:SetControllers(ReplicatedStorage.Controllers)
 Framework:SetComponents(ReplicatedStorage.Components)
-Framework:SetUI(ReplicatedStorage.UI)
+Framework:SetUI(ReplicatedStorage.Controllers.UIController)
+
 
 Framework:Start()
 	:andThen(function(deltaTime)

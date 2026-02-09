@@ -27,7 +27,7 @@ lune = "^0.10.2"
 [dependencies]
 Janitor = { wally = "howmanysmall/janitor", version = "^1.18.3" }
 Packet = { wally = "sjdinsd/packet", version = "^0.1.91" }
-Framework = { wally = "yuzkkj/framework", version = "^1.0.3" }
+Framework = { wally = "yuzkkj/framework", version = "=1.0.3" }
 Promise = { wally = "howmanysmall/typed-promise", version = "^4.0.6" }
 PlayerDataManager = { wally = "yuzkkj/player-data-manager", version = "^0.4.7" }
 Signal = { wally = "stravant/goodsignal", version = "^0.3.1" }
