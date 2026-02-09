@@ -1,3 +1,3 @@
 return {
-	['STICK'] = 'Stick',
+	['WoodenStick'] = 'WoodenStick',
 }

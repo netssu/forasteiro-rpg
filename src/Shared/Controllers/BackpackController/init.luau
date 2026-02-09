@@ -1,24 +1,31 @@
 local module = {}
 
--- // Services
-local Player = game:GetService('Players').LocalPlayer
+-- // SERVICES
+local Players = game:GetService("Players")
+local Player = Players.LocalPlayer
 
--- // Dependencies
-local Tool = require(script.Tool)
-local Weapons = require(script.Weapon)
+-- // DEPENDENCIES
+local ToolModule = require(script.Tool)
+local WeaponModule = require(script.Weapon)
 
--- // Public Functions
-function module:ToolAdded(a0: Tool, character: Model)
-	local Settings = a0:FindFirstChild('Settings') :: Configuration
-	if not Settings then return end
+-- // PUBLIC FUNCTIONS
+function module:ToolAdded(tool: Tool, character: Model)
+	local settings = tool:FindFirstChild("Settings")
+	if not settings then return end
 
-	Tool:Equip(a0, character)
-	if Player.Character == character then Weapons:Equip(a0, character) end
+	ToolModule:Equip(tool, character)
+
+	if character == Player.Character then
+		WeaponModule:Equip(tool, character)
+	end
 end
 
-function module:ToolRemove(Character: Model)
-	Tool:Unequip(Character)
-	Tool.Equip(self, tool, character)
+function module:ToolRemove(tool: Tool, character: Model)
+	ToolModule:Unequip(tool, character)
+
+	if character == Player.Character then
+		WeaponModule:Unequip(tool, character)
+	end
 end
 
 return module
