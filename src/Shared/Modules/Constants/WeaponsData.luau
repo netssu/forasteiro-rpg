@@ -22,7 +22,7 @@ export type WeaponConfig = {
 }
 
 local Weapons: { [string]: WeaponConfig } = {
-	[WeaponsEnum.STICK] = {
+	[WeaponsEnum.WoodenStick] = {
 		Name = 'Wooden Stick',
 		Description = 'A simple stick found in the backyard.',
 

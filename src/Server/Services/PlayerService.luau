@@ -24,4 +24,5 @@ function module:Init()
 	end)
 end
 
+print('[PlayerService] Initialized')
 return module

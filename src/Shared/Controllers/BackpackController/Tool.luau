@@ -84,4 +84,5 @@ function module:Unequip(character: Model)
 	if Janitors[character] then Janitors[character]:Cleanup() end
 end
 
+print('[ToolController] Initialized')
 return module

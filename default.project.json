@@ -4,34 +4,31 @@
     "$className": "DataModel",
     "ReplicatedStorage": {
       "$ignoreUnknownInstances": true,
-      "$path": "src/shared",
-        "Animations": {
-          "$className": "Folder",
-          "$ignoreUnknownInstances": true
-        },
+      "$path": "src/Shared",
+      "Animations": {
+        "$className": "Folder",
+        "$ignoreUnknownInstances": true
+      },
       "Assets": {
         "$className": "Folder",
         "$ignoreUnknownInstances": true
       },
       "Packages": {
         "$path": "roblox_packages"
-      },
-      "PackagesLocal": {
-        "$path": "roblox_packages_local"
       }
     },
     "ServerScriptService": {
       "$ignoreUnknownInstances": true,
-      "$path": "src/server",
-      "ServerPackages": {
-        "$path": "roblox_server_packages"
-      }
+      "$path": "src/Server"
     },
     "StarterPlayer": {
       "StarterPlayerScripts": {
         "$ignoreUnknownInstances": true,
-        "$path": "src/client"
+        "$path": "src/Client"
       }
+    },
+    "Workspace": {
+      "$ignoreUnknownInstances": true
     }
   }
 }

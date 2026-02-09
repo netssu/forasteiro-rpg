@@ -1,66 +1,56 @@
---!strict
 local module = {}
 
--- // Services
-local ReplicatedStorage = game:GetService('ReplicatedStorage')
+------------------//SERVICES
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
 
--- // Dependencies
+------------------//DEPENDENCIES
 local Cooldown = require(ReplicatedStorage.Modules.Core.Cooldown)
-local Packets = require(ReplicatedStorage.Modules.Game.Packets)
+local PinataService = require(ServerScriptService.Services.PinataService)
 local WeaponsData = require(ReplicatedStorage.Modules.Constants.WeaponsData)
+local PlayerDataManager = require(ReplicatedStorage.Packages.PlayerDataManager)
 
--- // Constants
-local HITBOX_SIZE = vector.create(8, 8, 8)
+------------------//CONSTANTS
+local HITBOX_SIZE = Vector3.new(8, 8, 8)
 
--- // Public Functions
-function module.OnStart(player: Player, data: { any })
-	if Cooldown:HasCooldown(player, 'M1') then return end
+------------------//PUBLIC FUNCTIONS
+function module.OnStart(player: Player, packet: any)
+	if Cooldown:HasCooldown(player, "M1") then warn("return")  return end
+	
+	local character = player.Character
+	if not character then warn("return")  return end
+	
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root then warn("return")  return end
 
-	local character = player.Character :: Model?
-	if not character then return end
-
-	local root = character:FindFirstChild('HumanoidRootPart') :: BasePart?
-	if not root then return end
-
-	local tool = character:FindFirstChildOfClass('Tool')
-	if not tool then return end
-
-	local settings = tool:FindFirstChild('Settings')
-	if not settings then return end
-
-	local toolName = settings:GetAttribute('Name') :: string?
-	if not toolName then return end
-
-	local toolData = WeaponsData[toolName]
-	if not toolData then return end
+	local equippedName = PlayerDataManager:Get(player, {"Inventory", "EquippedWeapon"})
+	local weaponData = WeaponsData[equippedName] or WeaponsData["WoodenStick"]
+	if not weaponData then warn("return") return else warn(weaponData) end
 
 	local overlapParams = OverlapParams.new()
-
+	overlapParams.FilterType = Enum.RaycastFilterType.Include
+	
 	local hitboxCFrame = root.CFrame * CFrame.new(0, 0, -3)
-	local partsFound =
-		workspace:GetPartBoundsInBox(hitboxCFrame, HITBOX_SIZE, overlapParams)
-
+	local partsFound = workspace:GetPartBoundsInBox(hitboxCFrame, HITBOX_SIZE, overlapParams)
+	
 	local hitTargets = {}
+	
 	for _, part in partsFound do
-		local model = part:FindFirstAncestorOfClass('Model')
+		local model = part:FindFirstAncestorOfClass("Model")
+		warn("part",part)
 		if model and not hitTargets[model] then
-			hitTargets[model] = true
-
-			if model:GetAttribute('Type') == 'Pinata' then
-				Packets.Replicator:Fire('pinata_hit', { Pinata = model })
-				module:ApplyDamage(player, model, toolData)
+			if model:GetAttribute("Type") == "Pinata" then
+				warn(model)
+				hitTargets[model] = true
+				
+				local ownerPlot = model:FindFirstAncestor("Plots") -- Assumindo estrutura de pastas
+				PinataService:Damage(player, model, weaponData.Damage)
+				break
 			end
 		end
 	end
-
-	Cooldown:SetCooldown(player, 'M1', toolData.Cooldown)
-end
-
-function module:ApplyDamage(player: Player, pinataModel: Model, toolData: any)
-	local currentHP = pinataModel:GetAttribute('Health') or 0
-	local newHP = math.max(0, currentHP - toolData.Damage)
-
-	pinataModel:SetAttribute('Health', newHP)
+	
+	Cooldown:SetCooldown(player, "M1", weaponData.Cooldown)
 end
 
 return module
