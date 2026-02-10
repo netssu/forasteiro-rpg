@@ -4,13 +4,40 @@ local module = {}
 local TweenService = game:GetService("TweenService")
 local Debris = game:GetService("Debris")
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- // CONSTANTS
 local BAR_LIFETIME = 3
 local PLAYER = Players.LocalPlayer
 local HIDE_TWEENS = {}
 
+-- // ASSETS
+local VFX_FOLDER = ReplicatedStorage.Assets:WaitForChild("VFX")
+
 -- // PRIVATE FUNCTIONS
+local function PlayVFX(vfxName: string, targetCFrame: CFrame)
+	local template = VFX_FOLDER:FindFirstChild(vfxName)
+	if not template then 
+		warn("VFX não encontrado: " .. vfxName)
+		return 
+	end
+
+	local vfxPart = template:Clone()
+	vfxPart.CFrame = targetCFrame
+	vfxPart.Anchored = true
+	vfxPart.CanCollide = false
+	vfxPart.Parent = workspace.Terrain
+
+	for _, child in vfxPart:GetDescendants() do
+		if child:IsA("ParticleEmitter") then
+			local count = child:GetAttribute("EmitCount") or 20 
+			child:Emit(count)
+		end
+	end
+
+	Debris:AddItem(vfxPart, 2)
+end
+
 local function GetLocalPinata()
 	local map = workspace:FindFirstChild("Map")
 	if not map then return nil end
@@ -62,7 +89,6 @@ local function CreateFloatingXP(position: Vector3, amountText: string)
 	textLabel.TextScaled = true
 	textLabel.Parent = billboard
 
-	-- UIStroke para deixar o texto gordinho
 	local stroke = Instance.new("UIStroke")
 	stroke.Thickness = 2.5
 	stroke.Parent = textLabel
@@ -82,27 +108,24 @@ local function UpdateXPBar(model: Model, currentXP: number, requiredXP: number, 
 	if not head then return end
 
 	local billboard = model:FindFirstChild("XPBarGui")
-	local isNew = false
-
+	
 	if not billboard then
-		isNew = true
 		billboard = Instance.new("BillboardGui")
 		billboard.Name = "XPBarGui"
-		billboard.Size = UDim2.fromScale(7, 1.4) -- Bem maior
-		billboard.StudsOffset = Vector3.new(0, 7.5, 0) -- Mais alto
+		billboard.Size = UDim2.fromScale(7, 1.4) -- Tamanho fixo
+		billboard.StudsOffset = Vector3.new(0, 7.5, 0)
 		billboard.AlwaysOnTop = true
 		
-		-- Container Principal (Borda Branca)
 		local container = Instance.new("Frame")
 		container.Name = "Container"
-		container.Size = UDim2.fromScale(1, 0.5) -- A barra ocupa metade do billboard
+		container.Size = UDim2.fromScale(1, 0.5)
 		container.Position = UDim2.fromScale(0, 0.5)
-		container.BackgroundColor3 = Color3.fromRGB(30, 30, 45) -- Fundo escuro
+		container.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
 		container.BorderSizePixel = 0
 		container.Parent = billboard
 		
 		local containerCorner = Instance.new("UICorner")
-		containerCorner.CornerRadius = UDim.new(1, 0) -- Pílula
+		containerCorner.CornerRadius = UDim.new(1, 0)
 		containerCorner.Parent = container
 		
 		local containerStroke = Instance.new("UIStroke")
@@ -110,11 +133,10 @@ local function UpdateXPBar(model: Model, currentXP: number, requiredXP: number, 
 		containerStroke.Thickness = 4
 		containerStroke.Parent = container
 
-		-- Barra de Preenchimento
 		local fill = Instance.new("Frame")
 		fill.Name = "Fill"
 		fill.Size = UDim2.fromScale(0, 1)
-		fill.BackgroundColor3 = Color3.fromRGB(0, 200, 255) -- Azul Neon
+		fill.BackgroundColor3 = Color3.fromRGB(0, 200, 255)
 		fill.BorderSizePixel = 0
 		fill.Parent = container
 		
@@ -122,7 +144,6 @@ local function UpdateXPBar(model: Model, currentXP: number, requiredXP: number, 
 		fillCorner.CornerRadius = UDim.new(1, 0)
 		fillCorner.Parent = fill
 		
-		-- Brilho interno (Opcional)
 		local gradient = Instance.new("UIGradient")
 		gradient.Color = ColorSequence.new{
 			ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 200, 255)),
@@ -131,11 +152,10 @@ local function UpdateXPBar(model: Model, currentXP: number, requiredXP: number, 
 		gradient.Rotation = 90
 		gradient.Parent = fill
 
-		-- Texto de Level
 		local text = Instance.new("TextLabel")
 		text.Name = "InfoText"
-		text.Size = UDim2.fromScale(1, 0.8) -- Texto grande
-		text.Position = UDim2.fromScale(0, -0.9) -- Acima da barra
+		text.Size = UDim2.fromScale(1, 0.8)
+		text.Position = UDim2.fromScale(0, -0.9)
 		text.BackgroundTransparency = 1
 		text.Font = Enum.Font.FredokaOne
 		text.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -147,12 +167,6 @@ local function UpdateXPBar(model: Model, currentXP: number, requiredXP: number, 
 		textStroke.Parent = text
 
 		billboard.Parent = model
-		
-		-- Animação de Entrada (Pop)
-		billboard.Size = UDim2.fromScale(0, 0)
-		TweenService:Create(billboard, TweenInfo.new(0.5, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), {
-			Size = UDim2.fromScale(7, 1.4)
-		}):Play()
 	end
 
 	local percent = math.clamp(currentXP / requiredXP, 0, 1)
@@ -165,7 +179,7 @@ local function UpdateXPBar(model: Model, currentXP: number, requiredXP: number, 
 	end
 	
 	if fill then
-		TweenService:Create(fill, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+		TweenService:Create(fill, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 			Size = UDim2.fromScale(percent, 1)
 		}):Play()
 	end
@@ -178,15 +192,7 @@ local function UpdateXPBar(model: Model, currentXP: number, requiredXP: number, 
 
 	HIDE_TWEENS[model] = task.delay(BAR_LIFETIME, function()
 		if billboard and billboard.Parent then
-			-- Animação de Saída
-			local tween = TweenService:Create(billboard, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
-				Size = UDim2.fromScale(0, 0)
-			})
-			tween:Play()
-			tween.Completed:Connect(function()
-				billboard.Enabled = false
-				billboard.Size = UDim2.fromScale(7, 1.4) -- Reseta tamanho para a próxima
-			end)
+			billboard.Enabled = false
 		end
 		HIDE_TWEENS[model] = nil
 	end)
@@ -204,6 +210,17 @@ function module:Start(data)
 	local model = GetLocalPinata()
 	if model then
 		local pos = model.PrimaryPart.Position
+		
+		PlayVFX("HitPinata", model.PrimaryPart.CFrame - Vector3.new(0, 3, 0))
+
+		local character = PLAYER.Character
+		if character then
+			local hand = character:FindFirstChild("RightHand") or character:FindFirstChild("Right Arm")
+			if hand then
+				PlayVFX("CandyDisappear", hand.CFrame)
+			end
+		end
+
 		CreateFloatingXP(pos, xpAdded)
 		UpdateXPBar(model, currentXP, maxXP, level)
 	end

@@ -21,10 +21,10 @@ function module:ToolAdded(tool: Tool, character: Model)
 end
 
 function module:ToolRemove(tool: Tool, character: Model)
-	ToolModule:Unequip(tool, character)
+	ToolModule:Unequip(character)
 
 	if character == Player.Character then
-		WeaponModule:Unequip(tool, character)
+		WeaponModule:Unequip(character)
 	end
 end
 

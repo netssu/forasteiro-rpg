@@ -5,6 +5,7 @@ local ReplicatedStorage = game:GetService('ReplicatedStorage')
 
 -- // Dependencies
 local Janitor = require(ReplicatedStorage.Packages.Janitor)
+local WeaponData = require(ReplicatedStorage.Modules.Constants.WeaponsData)
 
 -- // Variables
 local Janitors = {}
@@ -17,6 +18,10 @@ function module:Equip(tool: Tool, character: Model)
 	if not rightHand or not rightHand:IsA('BasePart') then return end
 
 	if Janitors[character] then Janitors[character]:Cleanup() end
+
+	if WeaponData[tool.Name] then
+		return
+	end
 
 	Janitors[character] = Janitor.new()
 	local JanitorModel = Janitors[character]

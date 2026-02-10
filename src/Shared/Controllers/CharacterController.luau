@@ -46,7 +46,7 @@ local function SetupCharacter(player: Player, character: Model)
 		Connections,
 		character.ChildRemoved:Connect(function(a0: Instance)
 			if a0:IsA("Tool") then
-				BackpackController:ToolRemove(character)
+				BackpackController:ToolRemove(a0,character)
 			end
 		end)
 	)
