@@ -1,19 +1,13 @@
 local module = {}
 
-------------------//SERVICES
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
 local ProximityPromptService = game:GetService("ProximityPromptService")
-local RunService = game:GetService("RunService")
 
-------------------//DEPENDENCIES
 local Packets = require(ReplicatedStorage.Modules.Game.Packets)
-
-------------------//CONSTANTS
 local PLAYER = Players.LocalPlayer
 
-------------------//PRIVATE FUNCTIONS
 local function GetLocalPinata()
 	local map = workspace:FindFirstChild("Map")
 	if not map then return nil end
@@ -61,9 +55,7 @@ local function UpdatePromptState()
 	prompt.Enabled = (candy ~= nil)
 end
 
-------------------//PUBLIC FUNCTIONS
 function module:Init()
-	-- Loop lento para garantir atualização caso a pinata renasça
 	task.spawn(function()
 		while true do
 			UpdatePromptState()

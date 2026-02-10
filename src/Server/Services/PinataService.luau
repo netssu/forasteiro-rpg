@@ -9,46 +9,36 @@ local ServerScriptService = game:GetService('ServerScriptService')
 ------------------//DEPENDENCIES
 local MetaPlayer = require(ServerScriptService.Modules.Core.MetaPlayer)
 local Packets = require(ReplicatedStorage.Modules.Game.Packets)
-local PinataData = require(ReplicatedStorage.Modules.Constants.PinataData)
 local PlayerDataManager = require(ReplicatedStorage.Packages.PlayerDataManager)
 local PlotmeService = require(ServerScriptService.Services.PlotmeService)
+local PinataData = require(ReplicatedStorage.Modules.Constants.PinataData)
+local WeaponData = require(ReplicatedStorage.Modules.Constants.WeaponsData)
 
 ------------------//CONSTANTS
 local RESPAWN_TIME = 3
-local DEFAULT_ROPE_LENGTH = 10
+local DEFAULT_ROPE_LENGTH = 20
 local BASE_XP_PER_CANDY = 15
-
-local PINATA_LEVELS = {
-	[1] = {
-		required_xp = 100,
-		model_name = 'Pocket Pinata',
-		scale = 1.0,
-		hp_multiplier = 1.0,
-	},
-	[2] = {
-		required_xp = 250,
-		model_name = 'Lhama_Level2',
-		scale = 1.2,
-		hp_multiplier = 1.5,
-	},
-	[3] = {
-		required_xp = 500,
-		model_name = 'Lhama_Level3',
-		scale = 1.5,
-		hp_multiplier = 2.5,
-	},
-}
 
 ------------------//PRIVATE FUNCTIONS
 local function get_level_data(level: number)
-	return PINATA_LEVELS[level] or PINATA_LEVELS[#PINATA_LEVELS]
+	if PinataData[level] then
+		return PinataData[level]
+	end
+
+	local maxLevel = 1
+	for lvl, _ in pairs(PinataData) do
+		if type(lvl) == "number" and lvl > maxLevel then
+			maxLevel = lvl
+		end
+	end
+
+	return PinataData[maxLevel] or PinataData[1]
 end
 
 local function clean_pinata(plot: Model)
 	local pinataFolder = plot:FindFirstChild('Pinata')
 	if pinataFolder then
-		local old = pinataFolder:FindFirstChild('Pinata')
-			or pinataFolder:FindFirstChild('Model')
+		local old = pinataFolder:FindFirstChild('Pinata') or pinataFolder:FindFirstChild('Model')
 		if old then old:Destroy() end
 	end
 end
@@ -69,21 +59,24 @@ function module:Init()
 		module.CreatePinata(metaPlayer)
 	end)
 
-	-- CORREÇÃO AQUI: Trocamos :Listen por .OnServerEvent:Connect
 	if Packets.Feed.OnServerEvent then
 		Packets.Feed.OnServerEvent:Connect(function(player, jsonString)
-			local success, data = pcall(function()
-				return HttpService:JSONDecode(jsonString)
-			end)
+			local success, data = pcall(function() return HttpService:JSONDecode(jsonString) end)
 			if success and data and data.ToolName then
 				module:Feed(player, data.ToolName)
 			end
 		end)
 	else
-		-- Fallback caso a biblioteca use outro nome (ex: .Event)
-		warn(
-			'[PinataService] Erro: Não foi possível conectar ao evento Feed.'
-		)
+		warn('[PinataService] Erro: Não foi possível conectar ao evento Feed.')
+	end
+
+	if Packets.Action.OnServerEvent then
+		Packets.Action.OnServerEvent:Connect(function(player, jsonString)
+			local success, data = pcall(function() return HttpService:JSONDecode(jsonString) end)
+			if success and data and data.Type == 'Hit' and data.ToolName then
+				module:ProcessHit(player, data.ToolName)
+			end
+		end)
 	end
 end
 
@@ -95,44 +88,47 @@ function module.CreatePinata(metaPlayer)
 
 	clean_pinata(plot)
 
-	local currentLevel = PlayerDataManager:Get(player, { 'Pinata', 'Level' })
-		or 1
+	local currentLevel = PlayerDataManager:Get(player, { 'Pinata', 'Level' }) or 1
 	local levelData = get_level_data(currentLevel)
 
-	local template = ReplicatedStorage.Assets.Pinatas:FindFirstChild(
-		levelData.model_name
-	) or ReplicatedStorage.Assets.Pinatas:FindFirstChild('Lhama_Level1')
-	if not template then return end
+	if not levelData then
+		warn("[PinataService] CRITICAL: Dados do nível " .. tostring(currentLevel) .. " não encontrados.")
+		return
+	end
+
+	local template = ReplicatedStorage.Assets.Pinatas:FindFirstChild(levelData.ModelName) 
+		or ReplicatedStorage.Assets.Pinatas:FindFirstChild('Lhama_Level1')
+
+	if not template then 
+		warn("[PinataService] Modelo não encontrado: " .. tostring(levelData.ModelName))
+		return 
+	end
 
 	local pinata = template:Clone()
 	pinata.Name = 'Pinata'
 	pinata.Parent = pinataFolder
 
-	local spawnPart = pinataFolder:FindFirstChild('Handle')
-		and pinataFolder.Handle:FindFirstChild('End')
-	if spawnPart then pinata:PivotTo(spawnPart.CFrame) end
+	local spawnPart = pinataFolder:FindFirstChild('Handle') and pinataFolder.Handle:FindFirstChild('End')
+	if spawnPart then 
+		pinata:PivotTo(spawnPart.CFrame) 
+	end
 
-	local maxHealth = 100 * (levelData.hp_multiplier or 1)
+	local maxHealth = levelData.MaxHealth
 
 	pinata:SetAttribute('Type', 'Pinata')
 	pinata:SetAttribute('Level', currentLevel)
 	pinata:SetAttribute('MaxHealth', maxHealth)
 	pinata:SetAttribute('Health', maxHealth)
 	pinata:SetAttribute('IsDead', false)
-	pinata:SetAttribute('Scale', levelData.scale or 1)
+	pinata:SetAttribute('Scale', levelData.Scale or 1)
 
-	if levelData.scale and levelData.scale ~= 1 then
-		pinata:ScaleTo(levelData.scale)
+	if levelData.Scale and levelData.Scale ~= 1 then
+		pinata:ScaleTo(levelData.Scale)
 	end
 
-	if
-		pinataFolder:FindFirstChild('Handle')
-		and pinataFolder.Handle:FindFirstChild('RopeConstraint')
-	then
+	if pinataFolder:FindFirstChild('Handle') and pinataFolder.Handle:FindFirstChild('RopeConstraint') then
 		local rope = pinataFolder.Handle.RopeConstraint
-		local staticData = PinataData[levelData.model_name]
-		rope.Length = staticData and staticData.RopeLength
-			or DEFAULT_ROPE_LENGTH
+		rope.Length = levelData.RopeLength or DEFAULT_ROPE_LENGTH
 	end
 
 	local weld = Instance.new('WeldConstraint')
@@ -140,7 +136,6 @@ function module.CreatePinata(metaPlayer)
 	weld.Part1 = pinataFolder.Handle.End
 	weld.Parent = pinata
 
-	-- Cria o Prompt (Desligado por padrão)
 	local prompt = Instance.new('ProximityPrompt')
 	prompt.Name = 'FeedPrompt'
 	prompt.ActionText = 'Feed Candy'
@@ -153,42 +148,64 @@ function module.CreatePinata(metaPlayer)
 	prompt.Parent = pinata.PrimaryPart or pinata:FindFirstChild('Handle')
 end
 
+function module:ProcessHit(player: Player, toolName: string)
+	local stats = WeaponData[toolName]
+	if not stats then return end
+
+	local character = player.Character
+	local equippedTool = character and character:FindFirstChild(toolName)
+	if not equippedTool then return end
+
+	local metaPlayer = MetaPlayer.Get(player)
+	if metaPlayer and metaPlayer.Cache.Plot then
+		local pinataFolder = metaPlayer.Cache.Plot:FindFirstChild('Pinata')
+		local pinata = pinataFolder and (
+			pinataFolder:FindFirstChild('Pinata') or pinataFolder:FindFirstChildWhichIsA('Model')
+		)
+
+		if pinata then 
+			self:ApplyDamage(player, pinata, stats.Damage) 
+		end
+	end
+end
+
 function module:Feed(player: Player, toolName: string)
-    local character = player.Character
-    local tool = character and character:FindFirstChild(toolName)
+	local character = player.Character
+	local tool = character and character:FindFirstChild(toolName)
+	if not tool then return end
 
-    if not tool then return end
+	local candyLevel = tool:GetAttribute('Level') or 1
+	local currentLevel = PlayerDataManager:Get(player, { 'Pinata', 'Level' }) or 1
+	local currentXP = PlayerDataManager:Get(player, { 'Pinata', 'XP' }) or 0
+	
+	local levelData = get_level_data(currentLevel)
+	if not levelData then return end
 
-    local candyLevel = tool:GetAttribute('Level') or 1
-    local currentLevel = PlayerDataManager:Get(player, { 'Pinata', 'Level' }) or 1
-    local currentXP = PlayerDataManager:Get(player, { 'Pinata', 'XP' }) or 0
-    local levelData = get_level_data(currentLevel)
+	local xpAmount = BASE_XP_PER_CANDY * candyLevel
+	local newTotalXP = currentXP + xpAmount
 
-    local xpAmount = BASE_XP_PER_CANDY * candyLevel
-    local newTotalXP = currentXP + xpAmount
+	tool:Destroy()
 
-    tool:Destroy()
+	local metaPlayer = MetaPlayer.Get(player)
+	if metaPlayer and metaPlayer.Cache.Plot then
+		local pinataFolder = metaPlayer.Cache.Plot:FindFirstChild('Pinata')
+		local pinata = pinataFolder and (
+			pinataFolder:FindFirstChild('Pinata') or pinataFolder:FindFirstChildWhichIsA('Model')
+		)
 
-    local metaPlayer = MetaPlayer.Get(player)
-    if metaPlayer and metaPlayer.Cache.Plot then
-        local pinataFolder = metaPlayer.Cache.Plot:FindFirstChild('Pinata')
-        local pinata = pinataFolder and (
-            pinataFolder:FindFirstChild('Pinata') or pinataFolder:FindFirstChildWhichIsA('Model')
-        )
+		if pinata and pinata.PrimaryPart then
+			local packetData = {
+				Type = 'pinata_feed',
+				XPAdded = xpAmount,
+				CurrentXP = newTotalXP,
+				MaxXP = levelData.RequiredXP,
+				Level = currentLevel,
+			}
+			SendPacket(player, HttpService:JSONEncode(packetData))
+		end
+	end
 
-        if pinata and pinata.PrimaryPart then
-            local packetData = {
-                Type = 'pinata_feed',
-                XPAdded = xpAmount,
-                CurrentXP = newTotalXP,
-                MaxXP = levelData.required_xp,
-                Level = currentLevel
-            }
-            SendPacket(player, HttpService:JSONEncode(packetData))
-        end
-    end
-
-    self:AddXP(player, xpAmount, false)
+	self:AddXP(player, xpAmount, false)
 end
 
 function module:ApplyDamage(player: Player, pinataModel: Model, damage: number)
@@ -199,8 +216,7 @@ function module:ApplyDamage(player: Player, pinataModel: Model, damage: number)
 	local newHealth = math.max(0, currentHealth - damage)
 	pinataModel:SetAttribute('Health', newHealth)
 
-	local pos = pinataModel.PrimaryPart and pinataModel.PrimaryPart.Position
-		or Vector3.zero
+	local pos = pinataModel.PrimaryPart and pinataModel.PrimaryPart.Position or Vector3.zero
 	local packetData = {
 		Type = 'pinata_hit',
 		Position = { X = pos.X, Y = pos.Y, Z = pos.Z },
@@ -209,23 +225,25 @@ function module:ApplyDamage(player: Player, pinataModel: Model, damage: number)
 
 	SendPacket(player, HttpService:JSONEncode(packetData))
 
-	local coins = math.floor(damage * 0.5)
-	if coins > 0 then
-		PlayerDataManager:Increment(player, { 'Currency', 'Coins' }, coins)
+	if newHealth <= 0 then 
+		self:Break(player, pinataModel) 
 	end
-
-	if newHealth <= 0 then self:Break(player, pinataModel) end
 end
 
 function module:Break(player: Player, pinataModel: Model)
 	pinataModel:SetAttribute('IsDead', true)
-	local level = pinataModel:GetAttribute('Level') or 1
-	local bonus = level * 50
+	
+	local currentLevel = PlayerDataManager:Get(player, { 'Pinata', 'Level' }) or 1
+	local levelData = get_level_data(currentLevel)
+	
+	if levelData and levelData.Drops and levelData.Drops.Coins then
+		local coinsMin = levelData.Drops.Coins.Min
+		local coinsMax = levelData.Drops.Coins.Max
+		local coinsReward = math.random(coinsMin, coinsMax)
+		PlayerDataManager:Increment(player, { 'Currency', 'Coins' }, coinsReward)
+	end
 
-	PlayerDataManager:Increment(player, { 'Currency', 'Coins' }, bonus)
-
-	local pos = pinataModel.PrimaryPart and pinataModel.PrimaryPart.Position
-		or Vector3.zero
+	local pos = pinataModel.PrimaryPart and pinataModel.PrimaryPart.Position or Vector3.zero
 	local packetData = {
 		Type = 'pinata_destroy',
 		Position = { X = pos.X, Y = pos.Y, Z = pos.Z },
@@ -244,15 +262,16 @@ function module:Break(player: Player, pinataModel: Model)
 end
 
 function module:AddXP(player: Player, amount: number, skipRespawn: boolean)
-	local currentLevel = PlayerDataManager:Get(player, { 'Pinata', 'Level' })
-		or 1
+	local currentLevel = PlayerDataManager:Get(player, { 'Pinata', 'Level' }) or 1
 	local currentXP = PlayerDataManager:Get(player, { 'Pinata', 'XP' }) or 0
 
 	local levelData = get_level_data(currentLevel)
+	if not levelData then return end
+
 	local newXP = currentXP + amount
 
-	if newXP >= levelData.required_xp then
-		local overflow = newXP - levelData.required_xp
+	if newXP >= levelData.RequiredXP then
+		local overflow = newXP - levelData.RequiredXP
 		PlayerDataManager:Set(player, { 'Pinata', 'Level' }, currentLevel + 1)
 		PlayerDataManager:Set(player, { 'Pinata', 'XP' }, overflow)
 

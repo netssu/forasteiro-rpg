@@ -71,7 +71,6 @@ end
 
 module.Emit = function(eventName, data)
 	local Module = GetModule(eventName)
-	warn(Module,eventName)
 	if not Module then return end
 
 	if typeof(Module.Start) ~= 'function' then

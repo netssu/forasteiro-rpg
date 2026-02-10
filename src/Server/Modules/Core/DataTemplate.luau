@@ -13,8 +13,8 @@ return {
 	},
 
 	Inventory = {
-		EquippedWeapon = 'WoodenStick',
-		Weapons = { 'WoodenStick' },
+		EquippedWeapon = 'RustyKnife',
+		Weapons = { 'RustyKnife' },
 		Items = {},
 		Candies = {},
 		Pinatas = { 'Pocket Pinata' },

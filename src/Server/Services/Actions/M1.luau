@@ -20,22 +20,22 @@ function module.OnStart(player: Player, packet: any)
 	
 	local character = player.Character
 	if not character then return end
-	
+	warn("M1 HIT", player.Name) --- IGNORE ---
 	local root = character:FindFirstChild("HumanoidRootPart")
 	if not root then return end
-
+warn("ROOT FOUND", player.Name) --- IGNORE ---
 	local equippedName = PlayerDataManager:Get(player, {"Inventory", "EquippedWeapon"})
-	local weaponData = WeaponsData[equippedName] or WeaponsData["WoodenStick"]
+	local weaponData = WeaponsData[equippedName] or WeaponsData["RustyKnife"]
 	if not weaponData then return end
 	local metaPlayer = MetaPlayer.Get(player)
 	if not metaPlayer then return end
-
+warn("METAPLAYER FOUND", player.Name) --- IGNORE ---
 	local plot = metaPlayer.Cache.Plot
 	if not plot then return end
 
 	local pinataFolder = plot:FindFirstChild("Pinata")
 	if not pinataFolder then return end
-
+warn("PINATA FOLDER FOUND", player.Name) --- IGNORE ---
 	local overlapParams = OverlapParams.new()
 	overlapParams.FilterType = Enum.RaycastFilterType.Include
 	overlapParams.FilterDescendantsInstances = { pinataFolder }

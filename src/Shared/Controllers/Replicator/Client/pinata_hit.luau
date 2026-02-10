@@ -149,7 +149,7 @@ function module:Start(data)
 	local model = GetLocalPinata()
 	if model then
 		HighlightTarget(model)
-		BumpTarget(model)
+		--BumpTarget(model)
 	end
 end
 
