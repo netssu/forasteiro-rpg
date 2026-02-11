@@ -59,7 +59,7 @@ local PinataLevels: { [number]: PinataConfig } = {
 		Drops = { Coins = { Min = 150, Max = 200 } },
 		ModelName = 'Lhama',
 		Scale = 1.1,
-		RopeLength = 22,
+		RopeLength = 19,
 	},
 	[4] = {
 		Name = 'Bettle',

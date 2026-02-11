@@ -10,9 +10,13 @@ local TweenService: TweenService = game:GetService("TweenService")
 local ContentProvider: ContentProvider = game:GetService("ContentProvider")
 
 --\\ DEPENDENCIES \\ -- TR
-local Constants: any = require(ReplicatedStorage.Modules.Constants.Droppers)
+local Constants: any = require(ReplicatedStorage.Modules.Constants.Machines)
 local Packets: any = require(ReplicatedStorage.Modules.Game.Packets)
 local TweenModule: any = require(ReplicatedStorage.Modules.Core.Tween)
+local Short: any = require(ReplicatedStorage.Modules.Core.Short)
+local DroppersModule: any = require(script.Droppers)
+local SprinklersModule: any = require(script.Sprinklers)
+local UpgradesModule: any = require(script.Upgrades)
 
 --\\ TYPES \\ -- TR
 type DropEffect = {
@@ -30,10 +34,13 @@ type CandyAttributeKeys = {
 	CandyScale: string,
 	DropSequence: string,
 	RemoveSequence: string,
+	Mutations: string,
 }
 
 type CandyStateRefs = {
 	Plot: Model,
+	GroupId: string,
+	SlotId: string,
 	Keys: CandyAttributeKeys,
 }
 
@@ -43,9 +50,19 @@ type CandyVisual = {
 	CanPosition: BasePart,
 	Parent: Instance,
 	Highlight: Highlight?,
+	MutationHighlight: Highlight?,
+	MutationConnection: RBXScriptConnection?,
 	ClickDetector: ClickDetector?,
-	Billboard: BillboardGui?,
+	LevelBar: BillboardGui?,
 	LevelLabel: TextLabel?,
+	XpLabel: TextLabel?,
+	BarFrame: GuiObject?,
+	MutationFrame: Frame?,
+	MutationTemplate: TextLabel?,
+	MutationClones: { TextLabel }?,
+	MutationTextConnection: RBXScriptConnection?,
+	LevelBarSize: UDim2?,
+	LevelBarOffset: Vector3?,
 	BaseScale: number,
 	IsRemoving: boolean,
 	IsBouncing: boolean,
@@ -54,10 +71,12 @@ type CandyVisual = {
 	PendingScale: number?,
 	BounceConnection: RBXScriptConnection?,
 	SpawnConnection: RBXScriptConnection?,
+	MutationKey: string?,
 	SlotId: string,
 	TapId: number?,
 	AllowInteraction: boolean,
 	AllowAttract: boolean,
+	PickupCooldownUntil: number?,
 }
 
 type TapVisual = {
@@ -67,6 +86,8 @@ type TapVisual = {
 	DropEffect: DropEffect?,
 	Candy: CandyVisual?,
 	TapId: number,
+	GroupId: string,
+	SlotId: string,
 	Hitbox: BasePart?,
 	HoverDetector: ClickDetector?,
 	PulseTween: Tween?,
@@ -78,8 +99,10 @@ type TapVisual = {
 type DropperVisual = {
 	Model: Model,
 	Plot: Model,
+	GroupId: string,
 	SlotId: string,
 	Type: string,
+	Config: any,
 	MainPart: BasePart?,
 	ButtonPart: BasePart?,
 	CanPosition: BasePart?,
@@ -100,11 +123,7 @@ type DropperVisual = {
 
 type PlotVisual = {
 	Plot: Model,
-	DroppersFolder: Instance,
-	LongSlot: Instance?,
-	WideSlot: Instance?,
-	DropperLong: DropperVisual?,
-	DropperWide: DropperVisual?,
+	Groups: { [string]: { Folder: Instance, Slots: { [string]: DropperVisual } } },
 }
 
 type CandyFloatData = {
@@ -114,78 +133,79 @@ type CandyFloatData = {
 }
 
 --\\ CONSTANTS \\ -- TR
-local DropperConfig: any = Constants.Dropper
+local AllMachinesConfig: any = Constants.Machines
+local MachinesConfig: { [string]: any } = {}
+DroppersModule.Register(MachinesConfig, AllMachinesConfig)
+SprinklersModule.Register(MachinesConfig, AllMachinesConfig)
 local VisualConfig: any = Constants.Visual
 local TimingConfig: any = Constants.Timing
 local AssetsConfig: any = Constants.Assets
 local CandyConfig: any = Constants.Candy
-local MAX_ACTIVATION_DISTANCE: number = 1000
+local MutationConfig: any = Constants.Mutation
 
 local EMPTY_STRING: string = ""
-local ASSETS_ROOT_NAME: string = "Assets"
-local MAP_FOLDER_NAME: string = "Map"
-local PLOTS_FOLDER_NAME: string = "Plots"
-local DEBRIS_FOLDER_NAME: string = "Debris"
-local LONG_SLOT_PART_NAME: string = "Long Slot"
-local WIDE_SLOT_PART_NAME: string = "Wide Slot"
+local ASSETS_ROOT_NAME: string = AssetsConfig.RootFolder
+local MACHINES_FOLDER_NAME: string = AssetsConfig.MachinesFolder
+local CANDIES_FOLDER_NAME: string = AssetsConfig.CandiesFolder
+local SLOT_LONG_ID: string = "1"
+local SLOT_WIDE_ID: string = "2"
 local CAN_POSITION_NAME: string = "CanPosition"
 local MAIN_PART_NAME: string = "Main"
 local BUTTON_PART_NAME: string = "Button"
 local TAP_NAME: string = "Tap"
-local SOUND_UP_NAME: string = "Up"
-local DROP_EFFECT_PART_NAME: string = "DropEffect"
 local HITBOX_PART_NAME: string = "Hitbox"
 local OWNER_ATTRIBUTE_NAME: string = "Owner"
 local DROPPER_HIGHLIGHT_COLOR: Color3 = Color3.fromRGB(255, 255, 255)
 local DROPPER_PLACE_COLOR: Color3 = Color3.fromRGB(70, 255, 120)
 local DROPPER_REMOVE_COLOR: Color3 = Color3.fromRGB(255, 70, 70)
 local CANDY_HIGHLIGHT_COLOR: Color3 = Color3.fromRGB(255, 0, 0)
-local HIGHLIGHT_FILL_TRANSPARENCY: number = 0.7
-local HIGHLIGHT_OUTLINE_TRANSPARENCY: number = 1
-local CLICK_SHRINK_SCALE: number = 0.92
-local CLICK_BOUNCE_SCALE: number = 0.08
-local HOLOGRAM_TRANSPARENCY: number = 0.5
-local HOLOGRAM_SPAWN_TIME: number = 0.15
-local HOLOGRAM_SPAWN_STYLE: string = "Sine"
-local HOLOGRAM_SPAWN_DIRECTION: string = "Out"
-local DEFAULT_MAX_LEVEL: number = 5
 local BUTTON_BASE_SIZE: Vector3 = Vector3.new(2.112, 1.056, 2.112)
 local BUTTON_HOVER_SCALE: number = 1.08
 local BUTTON_HOVER_TIME: number = 0.08
 local BUTTON_CLICK_SCALE: number = 0.9
 local BUTTON_READY_COLOR: Color3 = Color3.fromRGB(0, 255, 0)
 local BUTTON_COOLDOWN_COLOR: Color3 = Color3.fromRGB(255, 70, 70)
+local UPGRADE_SUCCESS_COLOR: Color3 = Color3.fromRGB(70, 255, 120)
+local UPGRADE_FAIL_COLOR: Color3 = Color3.fromRGB(255, 70, 70)
+local UPGRADE_PULSE_SCALE: number = 1.08
+local UPGRADE_PULSE_TIME: number = 0.08
 local REMOVE_ATTRACT_TIME: number = 0.25
-local BILLBOARD_SIZE: UDim2 = UDim2.fromOffset(160, 40)
-local BILLBOARD_OFFSET: Vector3 = Vector3.new(0, 2, 0)
-local BILLBOARD_MAX_DISTANCE: number = 25
-local BILLBOARD_TEXT_COLOR: Color3 = Color3.fromRGB(255, 255, 255)
-local BILLBOARD_TEXT_STROKE: number = 0.4
 local CANDY_SPAWN_TIME: number = 0.2
 local CANDY_SPAWN_STYLE: string = "Back"
 local CANDY_SPAWN_DIRECTION: string = "Out"
-local REMOVE_TRAIL_TEXTURE: string = "rbxassetid://284205403"
 
-local ATTRIBUTE_PREFIX: string = "Dropper"
+local ATTRIBUTE_PREFIX: string = "Machine"
 local ATTRIBUTE_TAP_PREFIX: string = "Tap"
-local ATTRIBUTE_FORMAT_NORMAL: string = "%s_%s_%s"
-local ATTRIBUTE_FORMAT_TAP: string = "%s_%s_%s%d_%s"
+local ATTRIBUTE_FORMAT_NORMAL: string = "%s_%s_%s_%s"
+local ATTRIBUTE_FORMAT_TAP: string = "%s_%s_%s_%s%d_%s"
 local ATTRIBUTE_KEY_CANDY_MODEL: string = "CandyModel"
 local ATTRIBUTE_KEY_CANDY_LEVEL: string = "CandyLevel"
 local ATTRIBUTE_KEY_CANDY_PROGRESS: string = "CandyProgress"
 local ATTRIBUTE_KEY_CANDY_SCALE: string = "CandyScale"
 local ATTRIBUTE_KEY_DROP_SEQUENCE: string = "DropSequence"
 local ATTRIBUTE_KEY_REMOVE_SEQUENCE: string = "RemoveSequence"
+local ATTRIBUTE_KEY_MUTATIONS: string = "Mutations"
+local ATTRIBUTE_KEY_UPGRADE_LEVEL: string = "UpgradeLevel"
+local ATTRIBUTE_KEY_UPGRADE_PREFIX: string = "Upgrade"
+
+local MEMORIE_FOLDER_NAME: string = "Memorie"
+local MEMORIE_PLOTS_FOLDER_NAME: string = "Plots"
+local MEMORIE_MACHINES_FOLDER_NAME: string = "Machines"
+local MEMORIE_SCALE_FACTOR: number = 1000
 
 local DEFAULT_NUMBER: number = 0
 
 local ACTION_PLACE_CANDY: string = "PlaceCandy"
 local ACTION_DROP: string = "Drop"
 local ACTION_REMOVE_CANDY: string = "RemoveCandy"
+local ACTION_UPGRADE_LEVEL: string = "UpgradeLevel"
+local ACTION_UPGRADE_LEVEL_MAX: string = "UpgradeLevelMax"
+local ACTION_UPGRADE_SPECIAL: string = "UpgradeSpecial"
 
 
 local DEBUG_ENABLED: boolean = false
 local DEBUG_HOVER: boolean = false
+local HOLOGRAM_ENABLED: boolean = false
 
 --\\ STATE \\ -- TR
 local _PlotVisuals: { [Model]: PlotVisual } = {}
@@ -197,10 +217,18 @@ local _PlotOwnerWatchers: { [Model]: RBXScriptConnection } = {}
 local _ButtonTweens: { [BasePart]: Tween } = {}
 local _ButtonCooldownUntil: { [BasePart]: number } = {}
 local _ActiveDropEffects: { [DropEffect]: boolean } = {}
-local _ActiveHoverDropper: DropperVisual? = nil
-local _ActiveHoverTap: TapVisual? = nil
 local _ToolAddedConnection: RBXScriptConnection? = nil
 local _ToolRemovedConnection: RBXScriptConnection? = nil
+local _MemorieMachinesFolders: { [Model]: Folder } = {}
+
+local _MutationVisuals: { [string]: { Order: number, Color: Color3?, IsRainbow: boolean? } } = {}
+for Index: number, MutationData: any in MutationConfig.Types do
+	_MutationVisuals[MutationData.Id] = {
+		Order = Index,
+		Color = MutationData.HighlightColor,
+		IsRainbow = MutationData.IsRainbow,
+	}
+end
 
 --\\ PRIVATE FUNCTIONS \\ -- TR
 local function _Debug(Message: string, ...: any): ()
@@ -212,10 +240,163 @@ local function _Debug(Message: string, ...: any): ()
 	print("[DropperDebug]", Output)
 end
 
+
+local function _GetMemorieMachinesFolder(Plot: Model): Folder?
+	local Cached: Folder? = _MemorieMachinesFolders[Plot]
+	if Cached and Cached.Parent then
+		return Cached
+	end
+
+	local Root: Instance? = ReplicatedStorage:FindFirstChild(MEMORIE_FOLDER_NAME)
+	if not Root or not Root:IsA("Folder") then
+		return nil
+	end
+
+	local PlotsFolder: Instance? = Root:FindFirstChild(MEMORIE_PLOTS_FOLDER_NAME)
+	if not PlotsFolder or not PlotsFolder:IsA("Folder") then
+		return nil
+	end
+
+	local PlotFolder: Instance? = PlotsFolder:FindFirstChild(Plot.Name)
+	if not PlotFolder or not PlotFolder:IsA("Folder") then
+		return nil
+	end
+
+	local MachinesFolder: Instance? = PlotFolder:FindFirstChild(MEMORIE_MACHINES_FOLDER_NAME)
+	if not MachinesFolder or not MachinesFolder:IsA("Folder") then
+		return nil
+	end
+
+	_MemorieMachinesFolders[Plot] = MachinesFolder
+	return MachinesFolder
+end
+
+local function _WaitForMemorieMachinesFolder(Plot: Model): Folder?
+	local Folder: Folder? = _GetMemorieMachinesFolder(Plot)
+	if Folder then
+		return Folder
+	end
+
+	local Root: Instance = ReplicatedStorage:WaitForChild(MEMORIE_FOLDER_NAME)
+	if not Root:IsA("Folder") then
+		return nil
+	end
+
+	local PlotsFolder: Instance = Root:WaitForChild(MEMORIE_PLOTS_FOLDER_NAME)
+	if not PlotsFolder:IsA("Folder") then
+		return nil
+	end
+
+	local PlotFolder: Instance = PlotsFolder:WaitForChild(Plot.Name)
+	if not PlotFolder:IsA("Folder") then
+		return nil
+	end
+
+	local MachinesFolder: Instance = PlotFolder:WaitForChild(MEMORIE_MACHINES_FOLDER_NAME)
+	if MachinesFolder:IsA("Folder") then
+		_MemorieMachinesFolders[Plot] = MachinesFolder
+		return MachinesFolder
+	end
+
+	return nil
+end
+
+local function _IsScaledKey(Key: string): boolean
+	return string.sub(Key, -#ATTRIBUTE_KEY_CANDY_SCALE) == ATTRIBUTE_KEY_CANDY_SCALE
+end
+
+local function _DecodeNumber(Key: string, Value: number): number
+	if _IsScaledKey(Key) then
+		return Value / MEMORIE_SCALE_FACTOR
+	end
+	return Value
+end
+
+local function _WaitForValueObject(Plot: Model, Key: string): ValueBase?
+	local Folder: Folder? = _WaitForMemorieMachinesFolder(Plot)
+	if not Folder then
+		return nil
+	end
+
+	local GroupId: string? = nil
+	local SlotId: string? = nil
+	local TapId: number? = nil
+	local KeyName: string? = nil
+	local TapIdValue: string? = nil
+
+	GroupId, SlotId, TapIdValue, KeyName = string.match(
+		Key,
+		"^" .. ATTRIBUTE_PREFIX .. "_([^_]+)_([^_]+)_" .. ATTRIBUTE_TAP_PREFIX .. "(%d+)_(.+)$"
+	)
+	if GroupId and SlotId and TapIdValue and KeyName then
+		TapId = tonumber(TapIdValue)
+	else
+		GroupId, SlotId, KeyName = string.match(Key, "^" .. ATTRIBUTE_PREFIX .. "_([^_]+)_([^_]+)_(.+)$")
+	end
+
+	local ValueName: string = Key
+	local TargetFolder: Folder = Folder
+	if GroupId and SlotId and KeyName then
+		ValueName = KeyName
+		local GroupFolder: Instance = Folder:WaitForChild(GroupId)
+		local SlotFolder: Instance = GroupFolder:WaitForChild(SlotId)
+		if TapId then
+			local TapsFolder: Instance = SlotFolder:WaitForChild("Taps")
+			local TapFolder: Instance = TapsFolder:WaitForChild(tostring(TapId))
+			if TapFolder:IsA("Folder") then
+				TargetFolder = TapFolder
+			end
+		else
+			if string.sub(KeyName, 1, #ATTRIBUTE_KEY_UPGRADE_PREFIX) == ATTRIBUTE_KEY_UPGRADE_PREFIX then
+				local UpgradesFolder: Instance = SlotFolder:WaitForChild("Upgrades")
+				if UpgradesFolder:IsA("Folder") then
+					TargetFolder = UpgradesFolder
+				end
+			else
+				local SlotDataFolder: Instance = SlotFolder:WaitForChild("Slot")
+				if SlotDataFolder:IsA("Folder") then
+					TargetFolder = SlotDataFolder
+				end
+			end
+		end
+	end
+
+	local ValueInstance: Instance? = TargetFolder:FindFirstChild(ValueName)
+	if not ValueInstance then
+		ValueInstance = TargetFolder:WaitForChild(ValueName)
+	end
+	if ValueInstance and ValueInstance:IsA("ValueBase") then
+		return ValueInstance
+	end
+
+	local Legacy: Instance? = Folder:FindFirstChild(Key)
+	if Legacy and Legacy:IsA("ValueBase") then
+		return Legacy
+	end
+	return nil
+end
+
+local function _GetValueChangedSignal(Plot: Model, Key: string): RBXScriptSignal?
+	local ValueObject: ValueBase? = _WaitForValueObject(Plot, Key)
+	if not ValueObject then
+		return nil
+	end
+	return ValueObject.Changed
+end
+
+local function _ConnectValueChanged(Plot: Model, Key: string, Callback: () -> ()): ()
+	local Signal: RBXScriptSignal? = _GetValueChangedSignal(Plot, Key)
+	if Signal then
+		Signal:Connect(Callback)
+	elseif DEBUG_ENABLED then
+		_Debug("Memorie value missing for key %s", Key)
+	end
+end
+
 local function _PreloadAssets(): ()
 	task.spawn(function(): ()
 		local Success: boolean, ErrorMessage: string? = pcall(function(): ()
-			ContentProvider:PreloadAsync({ REMOVE_TRAIL_TEXTURE })
+			ContentProvider:PreloadAsync({ "rbxassetid://284205403" })
 		end)
 		if not Success and DEBUG_ENABLED then
 			_Debug("Preload failed: %s", tostring(ErrorMessage))
@@ -236,7 +417,11 @@ local function _DescribeChildren(Parent: Instance): string
 		table.insert(Names, string.format("%s[%s]", Child.Name, Child.ClassName))
 	end
 	table.sort(Names)
-	return table.concat(Names, ", ")
+	local Output: string = table.concat(Names, ", ")
+	if Output == "" then
+		return "<empty>"
+	end
+	return Output
 end
 
 local function _GetPlotRotation(Plot: Model, SlotId: string, DefaultRotation: number): number
@@ -270,14 +455,14 @@ local function _GetPlotRotation(Plot: Model, SlotId: string, DefaultRotation: nu
 	end
 
 	local RotationsByPlot: { [number]: { [string]: number } } = {
-		[1] = { [DropperConfig.SlotLong] = -180, [DropperConfig.SlotWide] = 180 },
-		[2] = { [DropperConfig.SlotLong] = -180, [DropperConfig.SlotWide] = 0 },
-		[3] = { [DropperConfig.SlotLong] = 90, [DropperConfig.SlotWide] = -90 },
-		[4] = { [DropperConfig.SlotLong] = 90, [DropperConfig.SlotWide] = -90 },
-		[5] = { [DropperConfig.SlotLong] = 0, [DropperConfig.SlotWide] = -180 },
-		[6] = { [DropperConfig.SlotLong] = 0, [DropperConfig.SlotWide] = -180 },
-		[7] = { [DropperConfig.SlotLong] = -90, [DropperConfig.SlotWide] = 90 },
-		[8] = { [DropperConfig.SlotLong] = -90, [DropperConfig.SlotWide] = 90 },
+		[1] = { [SLOT_LONG_ID] = -180, [SLOT_WIDE_ID] = 180 },
+		[2] = { [SLOT_LONG_ID] = -180, [SLOT_WIDE_ID] = 0 },
+		[3] = { [SLOT_LONG_ID] = 90, [SLOT_WIDE_ID] = -90 },
+		[4] = { [SLOT_LONG_ID] = 90, [SLOT_WIDE_ID] = -90 },
+		[5] = { [SLOT_LONG_ID] = 0, [SLOT_WIDE_ID] = -180 },
+		[6] = { [SLOT_LONG_ID] = 0, [SLOT_WIDE_ID] = -180 },
+		[7] = { [SLOT_LONG_ID] = -90, [SLOT_WIDE_ID] = 90 },
+		[8] = { [SLOT_LONG_ID] = -90, [SLOT_WIDE_ID] = 90 },
 	}
 
 	local Rotations: { [string]: number }? = RotationsByPlot[Index]
@@ -301,6 +486,102 @@ local function _IsPlotOwnedByLocalPlayer(Plot: Model): boolean
 	return typeof(OwnerId) == "number" and OwnerId == Player.UserId
 end
 
+local function _GetLocalCoins(): number?
+	local Player: Player? = Players.LocalPlayer
+	if not Player then
+		return nil
+	end
+
+	local AttributeValue: any = Player:GetAttribute("Coins")
+	if typeof(AttributeValue) == "number" then
+		return AttributeValue
+	end
+
+	local Leaderstats: Instance? = Player:FindFirstChild("leaderstats")
+	if Leaderstats then
+		local CoinsValue: Instance? = Leaderstats:FindFirstChild("Coins")
+		if CoinsValue and (CoinsValue:IsA("IntValue") or CoinsValue:IsA("NumberValue")) then
+			return CoinsValue.Value
+		end
+	end
+
+	local CurrencyFolder: Instance? = Player:FindFirstChild("Currency")
+	if CurrencyFolder then
+		local CoinsValue: Instance? = CurrencyFolder:FindFirstChild("Coins")
+		if CoinsValue and (CoinsValue:IsA("IntValue") or CoinsValue:IsA("NumberValue")) then
+			return CoinsValue.Value
+		end
+	end
+
+	return nil
+end
+
+local function _BindCoinsWatcher(): ()
+	local Player: Player? = Players.LocalPlayer
+	if not Player then
+		return
+	end
+
+	local function Refresh(): ()
+		UpgradesModule.RefreshBoards()
+	end
+
+	Player:GetAttributeChangedSignal("Coins"):Connect(function(): ()
+		Refresh()
+	end)
+
+	local function BindValue(ValueObject: Instance): ()
+		if not (ValueObject:IsA("IntValue") or ValueObject:IsA("NumberValue")) then
+			return
+		end
+		ValueObject:GetPropertyChangedSignal("Value"):Connect(function(): ()
+			Refresh()
+		end)
+	end
+
+	local function BindLeaderstats(Leaderstats: Instance): ()
+		local CoinsValue: Instance? = Leaderstats:FindFirstChild("Coins")
+		if CoinsValue then
+			BindValue(CoinsValue)
+		end
+		Leaderstats.ChildAdded:Connect(function(Child: Instance): ()
+			if Child.Name == "Coins" then
+				BindValue(Child)
+			end
+		end)
+	end
+
+	local ExistingLeaderstats: Instance? = Player:FindFirstChild("leaderstats")
+	if ExistingLeaderstats then
+		BindLeaderstats(ExistingLeaderstats)
+	end
+
+	local function BindCurrency(Folder: Instance): ()
+		local CoinsValue: Instance? = Folder:FindFirstChild("Coins")
+		if CoinsValue then
+			BindValue(CoinsValue)
+		end
+		Folder.ChildAdded:Connect(function(Child: Instance): ()
+			if Child.Name == "Coins" then
+				BindValue(Child)
+			end
+		end)
+	end
+
+	local ExistingCurrency: Instance? = Player:FindFirstChild("Currency")
+	if ExistingCurrency then
+		BindCurrency(ExistingCurrency)
+	end
+
+	Player.ChildAdded:Connect(function(Child: Instance): ()
+		if Child.Name == "leaderstats" then
+			BindLeaderstats(Child)
+		elseif Child.Name == "Currency" then
+			BindCurrency(Child)
+		end
+	end)
+end
+
 local function _GetCandyMaxLevelForBillboard(ModelName: string): number
 	if ModelName ~= EMPTY_STRING then
 		local Evolution: any = CandyConfig.Evolutions[ModelName]
@@ -308,7 +589,27 @@ local function _GetCandyMaxLevelForBillboard(ModelName: string): number
 			return Evolution.MaxLevel
 		end
 	end
-	return DEFAULT_MAX_LEVEL
+	return 5
+end
+
+local function _GetEvolutionLimitForBillboard(ModelName: string, Level: number): number
+	if ModelName == EMPTY_STRING then
+		return 1
+	end
+
+	local Evolution: any = CandyConfig.Evolutions[ModelName]
+	if not Evolution or typeof(Evolution.Limit) ~= "number" or Evolution.Limit <= 0 then
+		return 1
+	end
+
+	local BaseLimit: number = Evolution.Limit
+	local Growth: number = if typeof(Evolution.LimitGrowth) == "number" then Evolution.LimitGrowth else 0
+	if Growth <= 0 or Level <= 1 then
+		return BaseLimit
+	end
+
+	local Multiplier: number = math.pow(1 + Growth, math.max(0, Level - 1))
+	return math.floor(BaseLimit * Multiplier + 0.5)
 end
 
 local function _HasPlotOwner(Plot: Model): boolean
@@ -473,9 +774,9 @@ local function _WatchSlotPart(
 end
 
 local function _GetDebrisFolder(): Instance
-	local Map: Instance? = workspace:FindFirstChild(MAP_FOLDER_NAME)
+	local Map: Instance? = workspace:FindFirstChild("Map")
 	if Map and (Map:IsA("Folder") or Map:IsA("Model")) then
-		local DebrisFolder: Instance? = Map:FindFirstChild(DEBRIS_FOLDER_NAME)
+		local DebrisFolder: Instance? = Map:FindFirstChild("Debris")
 		if DebrisFolder then
 			return DebrisFolder
 		end
@@ -483,38 +784,62 @@ local function _GetDebrisFolder(): Instance
 	return workspace
 end
 
-local function _GetAttributeKey(SlotId: string, TapId: number?, KeyName: string): string
+local function _GetAttributeKey(GroupId: string, SlotId: string, TapId: number?, KeyName: string): string
 	if TapId then
-		return string.format(ATTRIBUTE_FORMAT_TAP, ATTRIBUTE_PREFIX, SlotId, ATTRIBUTE_TAP_PREFIX, TapId, KeyName)
+		return string.format(ATTRIBUTE_FORMAT_TAP, ATTRIBUTE_PREFIX, GroupId, SlotId, ATTRIBUTE_TAP_PREFIX, TapId, KeyName)
 	end
-	return string.format(ATTRIBUTE_FORMAT_NORMAL, ATTRIBUTE_PREFIX, SlotId, KeyName)
+	return string.format(ATTRIBUTE_FORMAT_NORMAL, ATTRIBUTE_PREFIX, GroupId, SlotId, KeyName)
 end
 
-local function _BuildCandyAttributeKeys(SlotId: string, TapId: number?): CandyAttributeKeys
+local function _BuildCandyAttributeKeys(GroupId: string, SlotId: string, TapId: number?): CandyAttributeKeys
 	return {
-		CandyModel = _GetAttributeKey(SlotId, TapId, ATTRIBUTE_KEY_CANDY_MODEL),
-		CandyLevel = _GetAttributeKey(SlotId, TapId, ATTRIBUTE_KEY_CANDY_LEVEL),
-		CandyProgress = _GetAttributeKey(SlotId, TapId, ATTRIBUTE_KEY_CANDY_PROGRESS),
-		CandyScale = _GetAttributeKey(SlotId, TapId, ATTRIBUTE_KEY_CANDY_SCALE),
-		DropSequence = _GetAttributeKey(SlotId, TapId, ATTRIBUTE_KEY_DROP_SEQUENCE),
-		RemoveSequence = _GetAttributeKey(SlotId, TapId, ATTRIBUTE_KEY_REMOVE_SEQUENCE),
+		CandyModel = _GetAttributeKey(GroupId, SlotId, TapId, ATTRIBUTE_KEY_CANDY_MODEL),
+		CandyLevel = _GetAttributeKey(GroupId, SlotId, TapId, ATTRIBUTE_KEY_CANDY_LEVEL),
+		CandyProgress = _GetAttributeKey(GroupId, SlotId, TapId, ATTRIBUTE_KEY_CANDY_PROGRESS),
+		CandyScale = _GetAttributeKey(GroupId, SlotId, TapId, ATTRIBUTE_KEY_CANDY_SCALE),
+		DropSequence = _GetAttributeKey(GroupId, SlotId, TapId, ATTRIBUTE_KEY_DROP_SEQUENCE),
+		RemoveSequence = _GetAttributeKey(GroupId, SlotId, TapId, ATTRIBUTE_KEY_REMOVE_SEQUENCE),
+		Mutations = _GetAttributeKey(GroupId, SlotId, TapId, ATTRIBUTE_KEY_MUTATIONS),
 	}
 end
 
 local function _GetStringAttribute(Plot: Model, Key: string, Default: string): string
-	local Value: any = Plot:GetAttribute(Key)
-	if typeof(Value) == "string" then
-		return Value
+	local ValueObject: ValueBase? = _WaitForValueObject(Plot, Key)
+	if ValueObject and ValueObject:IsA("StringValue") then
+		return ValueObject.Value
 	end
 	return Default
 end
 
 local function _GetNumberAttribute(Plot: Model, Key: string, Default: number): number
-	local Value: any = Plot:GetAttribute(Key)
-	if typeof(Value) == "number" then
-		return Value
+	local ValueObject: ValueBase? = _WaitForValueObject(Plot, Key)
+	if ValueObject and ValueObject:IsA("IntValue") then
+		return _DecodeNumber(Key, ValueObject.Value)
 	end
 	return Default
+end
+
+local function _DecodeMutations(Value: string): { string }
+	if Value == EMPTY_STRING then
+		return {}
+	end
+
+	local Results: { string } = {}
+	local Separator: string = MutationConfig.Separator
+	local Pattern: string = "[^" .. Separator .. "]+"
+	for Token: string in string.gmatch(Value, Pattern) do
+		if Token ~= EMPTY_STRING then
+			table.insert(Results, Token)
+		end
+	end
+	return Results
+end
+
+local function _GetUpgradeKey(GroupId: string, SlotId: string, UpgradeId: string?): string
+	if not UpgradeId or UpgradeId == "Level" then
+		return string.format(ATTRIBUTE_FORMAT_NORMAL, ATTRIBUTE_PREFIX, GroupId, SlotId, ATTRIBUTE_KEY_UPGRADE_LEVEL)
+	end
+	return string.format(ATTRIBUTE_FORMAT_NORMAL, ATTRIBUTE_PREFIX, GroupId, SlotId, ATTRIBUTE_KEY_UPGRADE_PREFIX .. UpgradeId)
 end
 
 local function _GetEquippedTool(): Tool?
@@ -536,7 +861,7 @@ local function _GetCandyAssetsFolder(): Instance?
 	if not AssetsRoot then
 		return nil
 	end
-	return AssetsRoot:FindFirstChild(AssetsConfig.CandiesFolder)
+	return AssetsRoot:FindFirstChild(CANDIES_FOLDER_NAME)
 end
 
 local function _HasCandyAsset(Name: string): boolean
@@ -570,7 +895,7 @@ local function _CloneCandyAsset(CandyModelName: string): Model?
 		return nil
 	end
 
-	local AssetsFolder: Instance? = AssetsRoot:FindFirstChild(AssetsConfig.CandiesFolder)
+	local AssetsFolder: Instance? = AssetsRoot:FindFirstChild(CANDIES_FOLDER_NAME)
 	if not AssetsFolder then
 		return nil
 	end
@@ -628,7 +953,7 @@ local function _CloneCandyAsset(CandyModelName: string): Model?
 			Child.CanCollide = false
 			Child.CanQuery = false
 			Child.CanTouch = false
-			local TargetTransparency: number = if Child == PrimaryPart then 1 else HOLOGRAM_TRANSPARENCY
+			local TargetTransparency: number = if Child == PrimaryPart then 1 else 0.5
 			Child.Transparency = TargetTransparency
 			Child.LocalTransparencyModifier = TargetTransparency
 		end
@@ -656,9 +981,9 @@ local function _PlayHologramSpawn(TargetModel: Model): ()
 
 	_HologramTweens[TargetModel] = TweenModule:TweenScale(
 		TargetModel,
-		HOLOGRAM_SPAWN_TIME,
-		HOLOGRAM_SPAWN_STYLE,
-		HOLOGRAM_SPAWN_DIRECTION,
+		0.15,
+		"Sine",
+		"Out",
 		TargetScale,
 		function(): ()
 			_HologramTweens[TargetModel] = nil
@@ -677,8 +1002,8 @@ local function _PlayHologramDespawn(TargetModel: Model, OnComplete: (() -> ())?)
 	_CancelHologramTween(TargetModel)
 	_HologramTweens[TargetModel] = TweenModule:TweenScale(
 		TargetModel,
-		HOLOGRAM_SPAWN_TIME,
-		HOLOGRAM_SPAWN_STYLE,
+		0.15,
+		"Sine",
 		"In",
 		0,
 		function(): ()
@@ -698,7 +1023,7 @@ local function _ApplyHologramTint(TargetModel: Model, TintColor: Color3): ()
 
 	for _, Child: Instance in TargetModel:GetDescendants() do
 		if Child:IsA("BasePart") then
-			local TargetTransparency: number = if Child == PrimaryPart then 1 else HOLOGRAM_TRANSPARENCY
+			local TargetTransparency: number = if Child == PrimaryPart then 1 else 0.5
 			Child.Transparency = TargetTransparency
 			Child.LocalTransparencyModifier = TargetTransparency
 			Child.Color = TintColor
@@ -730,7 +1055,7 @@ local function _AttachRemovalTrail(TargetModel: Model): (() -> ())?
 	Trail.MinLength = 0
 	Trail.WidthScale = NumberSequence.new(VisualConfig.DropTrailWidth * 0.4)
 	Trail.Color = ColorSequence.new(VisualConfig.DropTrailColor)
-	Trail.Texture = REMOVE_TRAIL_TEXTURE
+	Trail.Texture = "rbxassetid://284205403"
 	Trail.FaceCamera = true
 	Trail.Enabled = true
 	Trail.Parent = PrimaryPart
@@ -798,17 +1123,16 @@ end
 
 _ClearOtherPreviews = function(KeepModel: Model?): ()
 	for _, PlotData: PlotVisual in _PlotVisuals do
-		if PlotData.DropperLong and PlotData.DropperLong.PreviewModel and PlotData.DropperLong.PreviewModel ~= KeepModel then
-			_ClearDropperPreview(PlotData.DropperLong)
-		end
-		if PlotData.DropperWide then
-			if PlotData.DropperWide.PreviewModel and PlotData.DropperWide.PreviewModel ~= KeepModel then
-				_ClearDropperPreview(PlotData.DropperWide)
-			end
-			if PlotData.DropperWide.Taps then
-				for _, TapData: TapVisual in PlotData.DropperWide.Taps do
-					if TapData.PreviewModel and TapData.PreviewModel ~= KeepModel then
-						_ClearTapPreview(TapData)
+		for _, GroupData in PlotData.Groups do
+			for _, SlotVisual: DropperVisual in GroupData.Slots do
+				if SlotVisual.PreviewModel and SlotVisual.PreviewModel ~= KeepModel then
+					_ClearDropperPreview(SlotVisual)
+				end
+				if SlotVisual.Taps then
+					for _, TapData: TapVisual in SlotVisual.Taps do
+						if TapData.PreviewModel and TapData.PreviewModel ~= KeepModel then
+							_ClearTapPreview(TapData)
+						end
 					end
 				end
 			end
@@ -837,9 +1161,6 @@ local function _ShowTapPreview(TapData: TapVisual, CandyName: string, TargetCFra
 end
 
 local function _GetReturnScale(DropperData: DropperVisual): number
-	if DropperData.IsHovering then
-		return VisualConfig.HoverScale
-	end
 	return DropperData.BaseScale
 end
 
@@ -931,13 +1252,15 @@ local function _FlashDropper(DropperData: DropperVisual, FlashColor: Color3): ()
 		)
 	end
 	local Highlight: Highlight = DropperData.Highlight
-	Highlight.FillColor = FlashColor
-	Highlight.FillTransparency = 0.2
+	Highlight.OutlineColor = FlashColor
+	Highlight.OutlineTransparency = 0
+	Highlight.FillTransparency = 1
 	Highlight.Enabled = true
 
-	TweenModule:Tween(Highlight, 0.12, "Sine", "Out", { FillTransparency = HIGHLIGHT_FILL_TRANSPARENCY }, 0, false, function(): ()
-		Highlight.FillColor = DropperData.HoverColor
-		Highlight.FillTransparency = HIGHLIGHT_FILL_TRANSPARENCY
+	TweenModule:Tween(Highlight, 0.12, "Sine", "Out", { OutlineTransparency = 0.7 }, 0, false, function(): ()
+		Highlight.OutlineColor = DROPPER_HIGHLIGHT_COLOR
+		Highlight.OutlineTransparency = 0
+		Highlight.FillTransparency = 1
 		if not DropperData.IsHovering then
 			Highlight.Enabled = false
 		end
@@ -951,15 +1274,16 @@ local function _EnsureDropperHighlight(DropperData: DropperVisual): ()
 
 	local Highlight: Highlight = Instance.new("Highlight")
 	Highlight.FillColor = DROPPER_HIGHLIGHT_COLOR
-	Highlight.FillTransparency = HIGHLIGHT_FILL_TRANSPARENCY
-	Highlight.OutlineTransparency = HIGHLIGHT_OUTLINE_TRANSPARENCY
+	Highlight.FillTransparency = 1
+	Highlight.OutlineColor = DROPPER_HIGHLIGHT_COLOR
+	Highlight.OutlineTransparency = 0
 	Highlight.Adornee = DropperData.Model
 	Highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 	Highlight.Enabled = false
 	Highlight.Parent = DropperData.Model
 
 	DropperData.Highlight = Highlight
-	DropperData.HoverColor = DropperData.HoverColor or DROPPER_HIGHLIGHT_COLOR
+	DropperData.HoverColor = DROPPER_HIGHLIGHT_COLOR
 end
 
 local function _StartTapPulse(TapData: TapVisual): ()
@@ -1034,18 +1358,9 @@ local function _PlayButtonClick(ButtonPart: BasePart): ()
 	end)
 end
 
-local function _SetDropperHasCandy(DropperData: DropperVisual, HasCandy: boolean): ()
-	DropperData.HasCandy = HasCandy
-	DropperData.HoverColor = if HasCandy then DROPPER_REMOVE_COLOR else DROPPER_HIGHLIGHT_COLOR
-
-	if DropperData.Highlight then
-		DropperData.Highlight.FillColor = DropperData.HoverColor
-	end
-end
-
 local function _CreateDropEffect(): DropEffect
 	local DropPart: Part = Instance.new("Part")
-	DropPart.Name = DROP_EFFECT_PART_NAME
+	DropPart.Name = "DropEffect"
 	DropPart.Size = VisualConfig.DropPartSize
 	DropPart.Anchored = true
 	DropPart.CanCollide = false
@@ -1172,9 +1487,10 @@ local function _SetDropperHover(DropperData: DropperVisual, IsHover: boolean): (
 		if DEBUG_HOVER then
 			_Debug("Hover enter for %s", DropperData.Model.Name)
 		end
-		DropperData.Highlight.FillColor = DropperData.HoverColor
+		DropperData.Highlight.OutlineColor = DROPPER_HIGHLIGHT_COLOR
+		DropperData.Highlight.OutlineTransparency = 0
+		DropperData.Highlight.FillTransparency = 1
 		DropperData.Highlight.Enabled = true
-		_TweenDropperScale(DropperData, VisualConfig.HoverScale)
 		return
 	end
 
@@ -1182,7 +1498,6 @@ local function _SetDropperHover(DropperData: DropperVisual, IsHover: boolean): (
 		_Debug("Hover leave for %s", DropperData.Model.Name)
 	end
 	DropperData.Highlight.Enabled = false
-	_TweenDropperScale(DropperData, DropperData.BaseScale)
 end
 
 local function _IsButtonOnCooldown(ButtonPart: BasePart): boolean
@@ -1202,80 +1517,7 @@ local function _SetButtonHighlightState(ButtonHighlight: Highlight?, IsCooldown:
 	end
 end
 
-local function _SetActiveHoverDropper(DropperData: DropperVisual): ()
-	if _ActiveHoverDropper and _ActiveHoverDropper ~= DropperData then
-		_SetDropperHover(_ActiveHoverDropper, false)
-		_ClearDropperPreview(_ActiveHoverDropper)
-	end
-	if _ActiveHoverTap then
-		_ClearTapPreview(_ActiveHoverTap)
-		_ActiveHoverTap = nil
-	end
-	_ActiveHoverDropper = DropperData
-end
-
-local function _SetActiveHoverTap(TapData: TapVisual, DropperData: DropperVisual): ()
-	if _ActiveHoverTap and _ActiveHoverTap ~= TapData then
-		_ClearTapPreview(_ActiveHoverTap)
-	end
-	_ActiveHoverTap = TapData
-	_SetActiveHoverDropper(DropperData)
-end
-
-local function _ClearActiveHoverDropper(DropperData: DropperVisual): ()
-	if _ActiveHoverDropper == DropperData then
-		_ActiveHoverDropper = nil
-	end
-end
-
-local function _ClearActiveHoverTap(TapData: TapVisual): ()
-	if _ActiveHoverTap == TapData then
-		_ActiveHoverTap = nil
-	end
-end
-
-local function _RefreshHoverPreview(): ()
-	local KeepModel: Model? = nil
-	if _ActiveHoverTap then
-		KeepModel = _ActiveHoverTap.PreviewModel
-	elseif _ActiveHoverDropper then
-		KeepModel = _ActiveHoverDropper.PreviewModel
-	end
-	_ClearOtherPreviews(KeepModel)
-
-	local ToolInstance: Tool? = _GetEquippedTool()
-	if _ActiveHoverTap then
-		if _ActiveHoverTap.HasCandy then
-			_ClearTapPreview(_ActiveHoverTap)
-			return
-		end
-		if ToolInstance then
-			local CandyName: string? = _GetCandyNameFromTool(ToolInstance)
-			if CandyName and _ActiveHoverTap.CanPosition then
-				_ShowTapPreview(_ActiveHoverTap, CandyName, _ActiveHoverTap.CanPosition.CFrame, _ActiveHoverTap.TapModel.Parent or _ActiveHoverTap.TapModel)
-				return
-			end
-		end
-		_ClearTapPreview(_ActiveHoverTap)
-		return
-	end
-
-	if _ActiveHoverDropper then
-		if _ActiveHoverDropper.HasCandy then
-			_ClearDropperPreview(_ActiveHoverDropper)
-			return
-		end
-		if ToolInstance then
-			local CandyName: string? = _GetCandyNameFromTool(ToolInstance)
-			if CandyName then
-				local PreviewCFrame: CFrame = if _ActiveHoverDropper.CanPosition then _ActiveHoverDropper.CanPosition.CFrame else _ActiveHoverDropper.Model:GetPivot()
-				_ShowDropperPreview(_ActiveHoverDropper, CandyName, PreviewCFrame)
-				return
-			end
-		end
-		_ClearDropperPreview(_ActiveHoverDropper)
-	end
-end
+local _SyncLevelBarLayout: (CandyData: CandyVisual) -> ()
 
 local function _ApplyCandyScale(CandyData: CandyVisual, NewScale: number): ()
 	CandyData.BaseScale = NewScale
@@ -1294,20 +1536,14 @@ local function _ApplyCandyScale(CandyData: CandyVisual, NewScale: number): ()
 		CandyData.Model:PivotTo(CandyData.CanPosition.CFrame)
 	end
 
-	if CandyData.Billboard then
-		CandyData.Billboard.StudsOffset = BILLBOARD_OFFSET
-		CandyData.Billboard.MaxDistance = BILLBOARD_MAX_DISTANCE
-	end
+	_SyncLevelBarLayout(CandyData)
 end
 
 local function _FinishSpawn(CandyData: CandyVisual): ()
 	CandyData.IsSpawning = false
 	CandyData.SpawnConnection = nil
 
-	if CandyData.Billboard then
-		CandyData.Billboard.StudsOffset = BILLBOARD_OFFSET
-		CandyData.Billboard.MaxDistance = BILLBOARD_MAX_DISTANCE
-	end
+	_SyncLevelBarLayout(CandyData)
 
 	if CandyData.PendingScale then
 		local PendingScale: number = CandyData.PendingScale
@@ -1348,6 +1584,8 @@ end
 local function _FinishBounce(CandyData: CandyVisual): ()
 	CandyData.IsBouncing = false
 	CandyData.BounceConnection = nil
+
+	_SyncLevelBarLayout(CandyData)
 
 	if CandyData.PendingScale then
 		local PendingScale: number = CandyData.PendingScale
@@ -1405,11 +1643,31 @@ local function _CleanupCandyVisual(CandyData: CandyVisual): ()
 
 	CandyData.Highlight = nil
 	CandyData.ClickDetector = nil
-	if CandyData.Billboard then
-		CandyData.Billboard:Destroy()
+	if CandyData.MutationConnection then
+		CandyData.MutationConnection:Disconnect()
 	end
-	CandyData.Billboard = nil
+	CandyData.MutationConnection = nil
+	if CandyData.MutationTextConnection then
+		CandyData.MutationTextConnection:Disconnect()
+	end
+	CandyData.MutationTextConnection = nil
+	CandyData.MutationHighlight = nil
+	if CandyData.LevelBar then
+		CandyData.LevelBar:Destroy()
+	end
+	CandyData.LevelBar = nil
 	CandyData.LevelLabel = nil
+	CandyData.XpLabel = nil
+	CandyData.BarFrame = nil
+	if CandyData.MutationTextConnection then
+		CandyData.MutationTextConnection:Disconnect()
+	end
+	CandyData.MutationTextConnection = nil
+	CandyData.MutationFrame = nil
+	CandyData.MutationTemplate = nil
+	CandyData.MutationClones = nil
+	CandyData.LevelBarSize = nil
+	CandyData.LevelBarOffset = nil
 	CandyData.OriginalColors = nil
 	if CandyData.SpawnConnection then
 		CandyData.SpawnConnection:Disconnect()
@@ -1430,6 +1688,7 @@ local function _AnimateCandyRemove(CandyData: CandyVisual): ()
 		return
 	end
 
+	local RemovingModel: Model = CandyData.Model
 	CandyData.IsRemoving = true
 
 	if CandyData.BounceConnection then
@@ -1449,11 +1708,18 @@ local function _AnimateCandyRemove(CandyData: CandyVisual): ()
 	_ActiveCandies[CandyData] = nil
 	CandyData.AllowAttract = false
 
-	if CandyData.Billboard then
-		CandyData.Billboard:Destroy()
+	if CandyData.LevelBar then
+		CandyData.LevelBar:Destroy()
 	end
-	CandyData.Billboard = nil
+	CandyData.LevelBar = nil
 	CandyData.LevelLabel = nil
+	CandyData.XpLabel = nil
+	CandyData.BarFrame = nil
+	CandyData.MutationFrame = nil
+	CandyData.MutationTemplate = nil
+	CandyData.MutationClones = nil
+	CandyData.LevelBarSize = nil
+	CandyData.LevelBarOffset = nil
 
 	local Player: Player? = Players.LocalPlayer
 	local RootPart: BasePart? = nil
@@ -1463,9 +1729,9 @@ local function _AnimateCandyRemove(CandyData: CandyVisual): ()
 
 	if RootPart then
 		local Target: CFrame = RootPart.CFrame
-		TweenModule:TweenModel(CandyData.Model, REMOVE_ATTRACT_TIME, "Sine", "In", { Value = Target }, 0, false, function(): ()
+		TweenModule:TweenModel(RemovingModel, REMOVE_ATTRACT_TIME, "Sine", "In", { Value = Target }, 0, false, function(): ()
 			TweenModule:TweenScale(
-				CandyData.Model,
+				RemovingModel,
 				VisualConfig.CandyBounceTime,
 				"Sine",
 				"In",
@@ -1474,13 +1740,20 @@ local function _AnimateCandyRemove(CandyData: CandyVisual): ()
 					if CleanupTrail then
 						CleanupTrail()
 					end
+					if CandyData.Model ~= RemovingModel then
+						if RemovingModel.Parent then
+							RemovingModel:Destroy()
+						end
+						CandyData.IsRemoving = false
+						return
+					end
 					_CleanupCandyVisual(CandyData)
 				end
 			)
 		end)
 	else
 		TweenModule:TweenScale(
-			CandyData.Model,
+			RemovingModel,
 			VisualConfig.CandyBounceTime,
 			"Sine",
 			"In",
@@ -1488,6 +1761,13 @@ local function _AnimateCandyRemove(CandyData: CandyVisual): ()
 			function(): ()
 				if CleanupTrail then
 					CleanupTrail()
+				end
+				if CandyData.Model ~= RemovingModel then
+					if RemovingModel.Parent then
+						RemovingModel:Destroy()
+					end
+					CandyData.IsRemoving = false
+					return
 				end
 				_CleanupCandyVisual(CandyData)
 			end
@@ -1510,14 +1790,14 @@ local function _SetupCandyHover(CandyData: CandyVisual): ()
 
 	local Highlight: Highlight = Instance.new("Highlight")
 	Highlight.FillColor = CANDY_HIGHLIGHT_COLOR
-	Highlight.FillTransparency = HIGHLIGHT_FILL_TRANSPARENCY
-	Highlight.OutlineTransparency = HIGHLIGHT_OUTLINE_TRANSPARENCY
+	Highlight.FillTransparency = 0.7
+	Highlight.OutlineTransparency = 1
 	Highlight.Enabled = false
 	Highlight.Parent = CandyData.Model
 	CandyData.Highlight = Highlight
 
 	local Detector: ClickDetector = Instance.new("ClickDetector")
-	Detector.MaxActivationDistance = MAX_ACTIVATION_DISTANCE
+	Detector.MaxActivationDistance = 1000
 	Detector.Parent = PrimaryPart
 	CandyData.ClickDetector = Detector
 
@@ -1565,54 +1845,177 @@ local function _SetupCandyHover(CandyData: CandyVisual): ()
 	end)
 
 	Detector.MouseClick:Connect(function(): ()
-		Packets.Dropper:Fire(ACTION_REMOVE_CANDY, { CandyData.SlotId, CandyData.TapId })
+		if CandyData.IsRemoving then
+			return
+		end
+		local Now: number = os.clock()
+		local Cooldown: number = if CandyData.TapId then 0.9 else 1.0
+		if CandyData.PickupCooldownUntil and Now < CandyData.PickupCooldownUntil then
+			return
+		end
+		CandyData.PickupCooldownUntil = Now + Cooldown
+		Packets.Machines:Fire(ACTION_REMOVE_CANDY, {
+			GroupId = CandyData.State.GroupId,
+			SlotId = CandyData.SlotId,
+			TapId = CandyData.TapId,
+		})
 	end)
 end
 
-local function _UpdateCandyBillboard(CandyData: CandyVisual): ()
-	if not CandyData.LevelLabel then
+function module._ClearMutationLabels(CandyData: CandyVisual): ()
+	if CandyData.MutationTextConnection then
+		CandyData.MutationTextConnection:Disconnect()
+	end
+	CandyData.MutationTextConnection = nil
+	if CandyData.MutationClones then
+		for _, Label: TextLabel in CandyData.MutationClones do
+			Label:Destroy()
+		end
+	end
+	CandyData.MutationClones = nil
+end
+
+local function _ApplyMutationTextEffect(CandyData: CandyVisual): ()
+	if not CandyData.MutationClones or #CandyData.MutationClones == 0 then
 		return
 	end
-	if CandyData.Billboard then
-		CandyData.Billboard.Size = BILLBOARD_SIZE
-		CandyData.Billboard.StudsOffset = BILLBOARD_OFFSET
-		CandyData.Billboard.MaxDistance = BILLBOARD_MAX_DISTANCE
+
+	local HasRainbow: boolean = false
+	for _, Label: TextLabel in CandyData.MutationClones do
+		local MutationId: string = Label.Text
+		local Visual: any = _MutationVisuals[MutationId]
+		if Visual and Visual.IsRainbow then
+			HasRainbow = true
+		else
+			local Color: Color3 = if Visual and Visual.Color then Visual.Color else Color3.fromRGB(255, 255, 255)
+			Label.TextColor3 = Color
+			Label.TextStrokeColor3 = Color
+			Label.TextStrokeTransparency = 0.4
+		end
 	end
 
+	if not HasRainbow then
+		return
+	end
+
+	CandyData.MutationTextConnection = RunService.RenderStepped:Connect(function(): ()
+		if not CandyData.MutationClones then
+			return
+		end
+		local Hue: number = (os.clock() * 0.6) % 1
+		local Color: Color3 = Color3.fromHSV(Hue, 1, 1)
+		for _, Label: TextLabel in CandyData.MutationClones do
+			local MutationId: string = Label.Text
+			local Visual: any = _MutationVisuals[MutationId]
+			if Visual and Visual.IsRainbow then
+				Label.TextColor3 = Color
+				Label.TextStrokeColor3 = Color
+				Label.TextStrokeTransparency = 0.4
+			end
+		end
+	end)
+end
+
+function module._UpdateMutationLabels(CandyData: CandyVisual, Mutations: { string }): ()
+	module._ClearMutationLabels(CandyData)
+	if not CandyData.MutationFrame or not CandyData.MutationTemplate then
+		return
+	end
+
+	if #Mutations == 0 then
+		CandyData.MutationFrame.Visible = false
+		return
+	end
+
+	CandyData.MutationFrame.Visible = true
+	CandyData.MutationTemplate.Visible = false
+
+	local Clones: { TextLabel } = {}
+	for _, MutationName: string in Mutations do
+		local Clone: TextLabel = CandyData.MutationTemplate:Clone()
+		Clone.Text = MutationName
+		Clone.Visible = true
+		Clone.Parent = CandyData.MutationTemplate.Parent
+		table.insert(Clones, Clone)
+	end
+	CandyData.MutationClones = Clones
+	_ApplyMutationTextEffect(CandyData)
+end
+
+_SyncLevelBarLayout = function(CandyData: CandyVisual): ()
+	if not CandyData.LevelBar then
+		return
+	end
+	if CandyData.LevelBarSize then
+		CandyData.LevelBar.Size = CandyData.LevelBarSize
+	end
+	if CandyData.LevelBarOffset then
+		CandyData.LevelBar.StudsOffset = CandyData.LevelBarOffset
+	end
+end
+
+function module._UpdateCandyBillboard(CandyData: CandyVisual): ()
+	if not CandyData.LevelLabel and not CandyData.XpLabel and not CandyData.BarFrame then
+		return
+	end
+	_SyncLevelBarLayout(CandyData)
 	local Level: number = _GetNumberAttribute(CandyData.State.Plot, CandyData.State.Keys.CandyLevel, DEFAULT_NUMBER)
 	local Exp: number = _GetNumberAttribute(CandyData.State.Plot, CandyData.State.Keys.CandyProgress, DEFAULT_NUMBER)
 	local ModelName: string = _GetStringAttribute(CandyData.State.Plot, CandyData.State.Keys.CandyModel, EMPTY_STRING)
-	local MaxLevel: number = _GetCandyMaxLevelForBillboard(ModelName)
-	if MaxLevel > 0 and Level >= MaxLevel then
-		CandyData.LevelLabel.Text = string.format("[Lv.%d] Max", Level)
-		return
+
+	if CandyData.LevelLabel then
+		CandyData.LevelLabel.Text = string.format("Level %d", Level)
 	end
-	local MaxExp: number = 0
+
+	local MaxLevel: number? = nil
 	if ModelName ~= EMPTY_STRING then
-		local Evolution: any = CandyConfig.Evolutions[ModelName]
-		if Evolution and typeof(Evolution.Limit) == "number" and Evolution.Limit > 0 then
-			MaxExp = Evolution.Limit
+		MaxLevel = _GetCandyMaxLevelForBillboard(ModelName)
+	end
+	local IsMaxLevel: boolean = MaxLevel ~= nil and Level >= (MaxLevel :: number)
+
+	local MaxExp: number = 1
+	if ModelName ~= EMPTY_STRING then
+		MaxExp = _GetEvolutionLimitForBillboard(ModelName, Level)
+	end
+
+	if CandyData.XpLabel then
+		if IsMaxLevel then
+			CandyData.XpLabel.Text = "MAX"
+			CandyData.XpLabel.RichText = false
+		else
+			local ExpText: string = string.format(
+				"%s <font size=\"10\" color=\"rgb(50,150,255)\">XP</font> / %s <font size=\"10\" color=\"rgb(50,150,255)\">XP</font>",
+				Short:Abbreviate(Exp),
+				Short:Abbreviate(MaxExp)
+			)
+			CandyData.XpLabel.Text = ExpText
+			CandyData.XpLabel.RichText = true
 		end
 	end
-	CandyData.LevelLabel.Text = string.format("[Lv.%d] Exp: %d/%d", Level, Exp, MaxExp)
+
+	local Progress: number = 0
+	if IsMaxLevel then
+		Progress = 1
+	elseif MaxExp > 0 then
+		Progress = math.clamp(Exp / MaxExp, 0, 1)
+	end
+
+	if CandyData.BarFrame then
+		CandyData.BarFrame.Visible = true
+		local TargetSize: UDim2 = UDim2.new(Progress, 0, 1, 0)
+		TweenService:Create(CandyData.BarFrame, TweenInfo.new(0.2, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
+			Size = TargetSize,
+		}):Play()
+	end
+
+	local MutationValue: string = _GetStringAttribute(CandyData.State.Plot, CandyData.State.Keys.Mutations, EMPTY_STRING)
+	local Mutations: { string } = _DecodeMutations(MutationValue)
+	module._UpdateMutationLabels(CandyData, Mutations)
 end
 
-local function _EnsureCandyBillboard(CandyData: CandyVisual): ()
-	if CandyData.LevelLabel then
-		local Billboard: BillboardGui? = CandyData.Billboard
-		if not Billboard then
-			local Parent: Instance? = CandyData.LevelLabel.Parent
-			if Parent and Parent:IsA("BillboardGui") then
-				Billboard = Parent
-				CandyData.Billboard = Billboard
-			end
-		end
-		if Billboard then
-			Billboard.Size = BILLBOARD_SIZE
-			Billboard.StudsOffset = BILLBOARD_OFFSET
-			Billboard.MaxDistance = BILLBOARD_MAX_DISTANCE
-		end
-		_UpdateCandyBillboard(CandyData)
+function module._EnsureCandyBillboard(CandyData: CandyVisual): ()
+	if CandyData.LevelBar then
+		module._UpdateCandyBillboard(CandyData)
 		return
 	end
 
@@ -1625,95 +2028,296 @@ local function _EnsureCandyBillboard(CandyData: CandyVisual): ()
 		return
 	end
 
-	local Billboard: BillboardGui = Instance.new("BillboardGui")
-	Billboard.Name = "CandyBillboard"
-	Billboard.Size = BILLBOARD_SIZE
-	Billboard.StudsOffset = BILLBOARD_OFFSET
-	Billboard.AlwaysOnTop = true
-	Billboard.LightInfluence = 0
-	Billboard.MaxDistance = BILLBOARD_MAX_DISTANCE
-	Billboard.Parent = PrimaryPart
-
-	local Label: TextLabel = Instance.new("TextLabel")
-	Label.Name = "CandyLabel"
-	Label.Size = UDim2.fromScale(1, 1)
-	Label.BackgroundTransparency = 1
-	Label.TextScaled = true
-	Label.Font = Enum.Font.GothamBold
-	Label.TextColor3 = BILLBOARD_TEXT_COLOR
-	Label.TextStrokeTransparency = BILLBOARD_TEXT_STROKE
-	Label.Parent = Billboard
-
-	CandyData.Billboard = Billboard
-	CandyData.LevelLabel = Label
-	_UpdateCandyBillboard(CandyData)
-end
-
-local function _SpawnCandyModel(CandyData: CandyVisual, CandyModelName: string): ()
 	local AssetsRoot: Instance = ReplicatedStorage:WaitForChild(ASSETS_ROOT_NAME)
-	local AssetsFolder: Instance = AssetsRoot:WaitForChild(AssetsConfig.CandiesFolder)
-
-	local CandyAsset: Instance? = AssetsFolder:FindFirstChild(CandyModelName)
-	if not CandyAsset then
-		_Debug("Candy asset missing: %s", CandyModelName)
+	local ModelsFolder: Instance = AssetsRoot:WaitForChild(AssetsConfig.ModelsFolder)
+	local Template: Instance? = ModelsFolder:FindFirstChild(AssetsConfig.LevelBarName)
+	if not Template then
 		return
 	end
 
-	if CandyData.Model then
-		CandyData.Model:Destroy()
-		CandyData.Model = nil
-		CandyData.Highlight = nil
-		CandyData.ClickDetector = nil
-		if CandyData.Billboard then
-			CandyData.Billboard:Destroy()
-		end
-		CandyData.Billboard = nil
-		CandyData.LevelLabel = nil
+	local Clone: Instance = Template:Clone()
+	local Billboard: BillboardGui? = nil
+	if Clone:IsA("BillboardGui") then
+		Billboard = Clone
+	else
+		Billboard = Clone:FindFirstChildWhichIsA("BillboardGui", true)
+	end
+	if not Billboard then
+		return
 	end
 
-	local CandyClone: Model? = nil
+	Billboard.MaxDistance = 30
+
+	local BaseSize: UDim2 = Billboard.Size
+	local BaseOffset: Vector3 = Billboard.StudsOffset
+
+	Clone.Parent = PrimaryPart
+
+	local LevelLabel: TextLabel? = nil
+	local LevelCandidate: Instance? = Billboard:FindFirstChild("Level", true)
+	if LevelCandidate and LevelCandidate:IsA("TextLabel") then
+		LevelLabel = LevelCandidate
+	end
+
+	local XpLabel: TextLabel? = nil
+	local BarFrame: GuiObject? = nil
+	local BarContainer: GuiObject? = nil
+
+	local DirectBar: Instance? = Billboard:FindFirstChild("Bar")
+	if DirectBar and DirectBar:IsA("GuiObject") then
+		BarContainer = DirectBar
+		local Inner: Instance? = DirectBar:FindFirstChild("Bar")
+		if Inner and Inner:IsA("GuiObject") then
+			BarFrame = Inner
+		else
+			BarFrame = DirectBar
+		end
+		local XpCandidate: Instance? = DirectBar:FindFirstChild("XP", true)
+		if XpCandidate and XpCandidate:IsA("TextLabel") then
+			XpLabel = XpCandidate
+		end
+	end
+
+	if not BarFrame then
+		for _, Descendant: Instance in Billboard:GetDescendants() do
+			if Descendant:IsA("GuiObject") and Descendant.Name == "Bar" then
+				local Parent: Instance? = Descendant.Parent
+				if Parent and Parent:IsA("GuiObject") and Parent.Name == "Bar" then
+					BarContainer = Parent
+					BarFrame = Descendant
+					break
+				end
+			end
+		end
+	end
+
+	if not BarFrame then
+		local BarCandidate: Instance? = Billboard:FindFirstChild("Bar", true)
+		if BarCandidate and BarCandidate:IsA("GuiObject") then
+			BarContainer = BarCandidate
+			local Inner: Instance? = BarCandidate:FindFirstChild("Bar")
+			if Inner and Inner:IsA("GuiObject") then
+				BarFrame = Inner
+			else
+				BarFrame = BarCandidate
+			end
+		end
+	end
+
+	if BarContainer then
+		local XpCandidate: Instance? = BarContainer:FindFirstChild("XP", true)
+		if XpCandidate and XpCandidate:IsA("TextLabel") then
+			XpLabel = XpCandidate
+		end
+	end
+
+	if not XpLabel then
+		local XpCandidate: Instance? = Billboard:FindFirstChild("XP", true)
+		if XpCandidate and XpCandidate:IsA("TextLabel") then
+			XpLabel = XpCandidate
+		end
+	end
+
+	if BarContainer and BarFrame == BarContainer then
+		local Inner: Instance? = BarContainer:FindFirstChild("Bar", true)
+		if Inner and Inner:IsA("GuiObject") and Inner ~= BarContainer then
+			BarFrame = Inner
+		end
+	end
+
+	local MutationFrame: Frame? = nil
+	local MutationCandidate: Instance? = Billboard:FindFirstChild("Mutations", true)
+	if MutationCandidate and MutationCandidate:IsA("Frame") then
+		MutationFrame = MutationCandidate
+	end
+	local MutationTemplate: TextLabel? = nil
+	if MutationFrame then
+		local Content: Instance? = MutationFrame:FindFirstChild("Content", true)
+		if Content and Content:IsA("TextLabel") then
+			MutationTemplate = Content
+		end
+	end
+
+	CandyData.LevelBar = Billboard
+	CandyData.LevelLabel = LevelLabel
+	CandyData.XpLabel = XpLabel
+	CandyData.BarFrame = BarFrame
+	CandyData.MutationFrame = MutationFrame
+	CandyData.MutationTemplate = MutationTemplate
+	CandyData.MutationClones = nil
+	if CandyData.MutationTextConnection then
+		CandyData.MutationTextConnection:Disconnect()
+	end
+	CandyData.MutationTextConnection = nil
+	CandyData.LevelBarSize = BaseSize
+	CandyData.LevelBarOffset = BaseOffset
+
+	_SyncLevelBarLayout(CandyData)
+	module._UpdateCandyBillboard(CandyData)
+end
+
+local function _StopMutationHighlight(CandyData: CandyVisual): ()
+	if CandyData.MutationConnection then
+		CandyData.MutationConnection:Disconnect()
+	end
+	CandyData.MutationConnection = nil
+	if CandyData.MutationHighlight then
+		CandyData.MutationHighlight.Enabled = false
+	end
+end
+
+local function _StartRainbowHighlight(CandyData: CandyVisual): ()
+	_StopMutationHighlight(CandyData)
+	if not CandyData.MutationHighlight then
+		return
+	end
+
+	CandyData.MutationHighlight.Enabled = true
+	CandyData.MutationConnection = RunService.RenderStepped:Connect(function(): ()
+		if not CandyData.MutationHighlight then
+			return
+		end
+		local Hue: number = (os.clock() * 0.6) % 1
+		local Color: Color3 = Color3.fromHSV(Hue, 1, 1)
+		CandyData.MutationHighlight.FillColor = Color
+		CandyData.MutationHighlight.OutlineColor = Color
+	end)
+end
+
+function module._UpdateCandyMutationHighlight(CandyData: CandyVisual): ()
+	if not CandyData.Model then
+		_StopMutationHighlight(CandyData)
+		return
+	end
+
+	local MutationValue: string = _GetStringAttribute(CandyData.State.Plot, CandyData.State.Keys.Mutations, EMPTY_STRING)
+	local Mutations: { string } = _DecodeMutations(MutationValue)
+	if #Mutations == 0 then
+		_StopMutationHighlight(CandyData)
+		return
+	end
+
+	if not CandyData.MutationHighlight then
+		local Highlight: Highlight = Instance.new("Highlight")
+		Highlight.Adornee = CandyData.Model
+		Highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		Highlight.FillTransparency = 0.5
+		Highlight.OutlineTransparency = 1
+		Highlight.Parent = CandyData.Model
+		CandyData.MutationHighlight = Highlight
+	end
+
+	local BestId: string? = nil
+	local BestOrder: number = math.huge
+	for _, MutationId: string in Mutations do
+		local Visual: any = _MutationVisuals[MutationId]
+		if Visual and Visual.Order < BestOrder then
+			BestOrder = Visual.Order
+			BestId = MutationId
+		end
+	end
+
+	if not BestId then
+		_StopMutationHighlight(CandyData)
+		return
+	end
+
+	local VisualData: any = _MutationVisuals[BestId]
+	if VisualData and VisualData.IsRainbow then
+		_StartRainbowHighlight(CandyData)
+		return
+	end
+
+	_StopMutationHighlight(CandyData)
+	if CandyData.MutationHighlight then
+		local Color: Color3 = if VisualData and VisualData.Color then VisualData.Color else Color3.fromRGB(255, 255, 255)
+		CandyData.MutationHighlight.FillColor = Color
+		CandyData.MutationHighlight.OutlineColor = Color
+		CandyData.MutationHighlight.Enabled = true
+	end
+end
+
+module.CandyTools = {}
+
+function module.CandyTools.ClearVisual(CandyData: CandyVisual, KeepModel: boolean?): ()
+	if not CandyData.Model then
+		return
+	end
+
+	if not KeepModel then
+		CandyData.Model:Destroy()
+	end
+	CandyData.Model = nil
+	CandyData.Highlight = nil
+	if CandyData.MutationConnection then
+		CandyData.MutationConnection:Disconnect()
+	end
+	CandyData.MutationConnection = nil
+	CandyData.MutationHighlight = nil
+	if CandyData.MutationTextConnection then
+		CandyData.MutationTextConnection:Disconnect()
+	end
+	CandyData.MutationTextConnection = nil
+	CandyData.ClickDetector = nil
+	if CandyData.LevelBar then
+		CandyData.LevelBar:Destroy()
+	end
+	CandyData.LevelBar = nil
+	CandyData.LevelLabel = nil
+	CandyData.XpLabel = nil
+	CandyData.BarFrame = nil
+	CandyData.MutationFrame = nil
+	CandyData.MutationTemplate = nil
+	CandyData.MutationClones = nil
+end
+
+function module.CandyTools.CloneAssetInstance(CandyAsset: Instance): Model?
 	if CandyAsset:IsA("Model") then
-		CandyClone = CandyAsset:Clone()
-	elseif CandyAsset:IsA("BasePart") then
+		return CandyAsset:Clone()
+	end
+
+	if CandyAsset:IsA("BasePart") then
 		local ModelWrapper: Model = Instance.new("Model")
 		ModelWrapper.Name = CandyAsset.Name
 		local PartClone: BasePart = CandyAsset:Clone()
 		PartClone.Parent = ModelWrapper
 		ModelWrapper.PrimaryPart = PartClone
-		CandyClone = ModelWrapper
-	elseif CandyAsset:IsA("Folder") then
+		return ModelWrapper
+	end
+
+	if CandyAsset:IsA("Folder") then
 		local ChildModel: Model? = CandyAsset:FindFirstChildOfClass("Model")
-		local ChildPart: BasePart? = CandyAsset:FindFirstChildWhichIsA("BasePart")
 		if ChildModel then
-			CandyClone = ChildModel:Clone()
-		elseif ChildPart then
+			return ChildModel:Clone()
+		end
+		local ChildPart: BasePart? = CandyAsset:FindFirstChildWhichIsA("BasePart")
+		if ChildPart then
 			local ModelWrapper: Model = Instance.new("Model")
 			ModelWrapper.Name = CandyAsset.Name
 			local PartClone: BasePart = ChildPart:Clone()
 			PartClone.Parent = ModelWrapper
 			ModelWrapper.PrimaryPart = PartClone
-			CandyClone = ModelWrapper
+			return ModelWrapper
 		end
 	end
 
-	if not CandyClone then
-		_Debug("Candy asset not supported: %s (%s)", CandyModelName, CandyAsset.ClassName)
-		return
-	end
+	return nil
+end
 
+function module.CandyTools.EnsurePrimaryPart(CandyClone: Model): BasePart?
 	local PrimaryPart: BasePart? = CandyClone.PrimaryPart
-	if not PrimaryPart then
-		PrimaryPart = _FindFirstBasePart(CandyClone)
-		if PrimaryPart then
-			CandyClone.PrimaryPart = PrimaryPart
-		end
+	if PrimaryPart then
+		return PrimaryPart
 	end
 
-	if not PrimaryPart then
-		CandyClone:Destroy()
-		return
+	PrimaryPart = _FindFirstBasePart(CandyClone)
+	if PrimaryPart then
+		CandyClone.PrimaryPart = PrimaryPart
 	end
+	return PrimaryPart
+end
 
+function module.CandyTools.PrepareClone(CandyClone: Model): ()
 	for _, Child: Instance in CandyClone:GetDescendants() do
 		if Child:IsA("BillboardGui") then
 			Child:Destroy()
@@ -1728,7 +2332,9 @@ local function _SpawnCandyModel(CandyData: CandyVisual, CandyModelName: string):
 			Child.CanTouch = false
 		end
 	end
+end
 
+function module.CandyTools.FinalizeSpawn(CandyData: CandyVisual, CandyClone: Model, CandyModelName: string): ()
 	CandyClone.Parent = CandyData.Parent
 	CandyClone:PivotTo(CandyData.CanPosition.CFrame)
 
@@ -1755,7 +2361,7 @@ local function _SpawnCandyModel(CandyData: CandyVisual, CandyModelName: string):
 	local TargetScale: number = if ScaleValue > 0 then ScaleValue else 1
 	_PlayCandySpawn(CandyData, TargetScale)
 	_SetupCandyHover(CandyData)
-	_EnsureCandyBillboard(CandyData)
+	module._EnsureCandyBillboard(CandyData)
 
 	local FloatData: CandyFloatData = {
 		Visual = CandyData,
@@ -1764,6 +2370,36 @@ local function _SpawnCandyModel(CandyData: CandyVisual, CandyModelName: string):
 	}
 
 	_ActiveCandies[CandyData] = FloatData
+end
+
+function module._SpawnCandyModel(CandyData: CandyVisual, CandyModelName: string): ()
+	local AssetsRoot: Instance = ReplicatedStorage:WaitForChild(ASSETS_ROOT_NAME)
+	local AssetsFolder: Instance = AssetsRoot:WaitForChild(CANDIES_FOLDER_NAME)
+
+	local CandyAsset: Instance? = AssetsFolder:FindFirstChild(CandyModelName)
+	if not CandyAsset then
+		_Debug("Candy asset missing: %s", CandyModelName)
+		return
+	end
+
+	module.CandyTools.ClearVisual(CandyData, CandyData.IsRemoving)
+
+	local CandyClone: Model? = module.CandyTools.CloneAssetInstance(CandyAsset)
+
+	if not CandyClone then
+		_Debug("Candy asset not supported: %s (%s)", CandyModelName, CandyAsset.ClassName)
+		return
+	end
+
+	local PrimaryPart: BasePart? = module.CandyTools.EnsurePrimaryPart(CandyClone)
+
+	if not PrimaryPart then
+		CandyClone:Destroy()
+		return
+	end
+
+	module.CandyTools.PrepareClone(CandyClone)
+	module.CandyTools.FinalizeSpawn(CandyData, CandyClone, CandyModelName)
 end
 
 local function _HandleCandyModelChanged(CandyData: CandyVisual): ()
@@ -1775,7 +2411,8 @@ local function _HandleCandyModelChanged(CandyData: CandyVisual): ()
 		return
 	end
 
-	_SpawnCandyModel(CandyData, ModelName)
+	module._SpawnCandyModel(CandyData, ModelName)
+	module._UpdateCandyMutationHighlight(CandyData)
 end
 
 local function _HandleCandyScaleChanged(CandyData: CandyVisual): ()
@@ -1786,8 +2423,32 @@ local function _HandleCandyScaleChanged(CandyData: CandyVisual): ()
 	_ApplyCandyScale(CandyData, NewScale)
 end
 
+local function _EnsureCandyVisualFromState(CandyData: CandyVisual): ()
+	if CandyData.Model and not CandyData.IsRemoving then
+		return
+	end
+
+	local HasCandy: boolean = _GetBoolAttribute(CandyData.State.Plot, CandyData.State.Keys.HasCandy, DEFAULT_BOOL)
+	if not HasCandy then
+		return
+	end
+
+	local ModelName: string = _GetStringAttribute(CandyData.State.Plot, CandyData.State.Keys.CandyModel, EMPTY_STRING)
+	if ModelName == EMPTY_STRING then
+		return
+	end
+
+	module._SpawnCandyModel(CandyData, ModelName)
+	module._UpdateCandyMutationHighlight(CandyData)
+	module._UpdateCandyBillboard(CandyData)
+end
+
 local function _HandleCandyRemove(CandyData: CandyVisual): ()
 	_AnimateCandyRemove(CandyData)
+
+	task.delay(0.3, function(): ()
+		_EnsureCandyVisualFromState(CandyData)
+	end)
 end
 
 local function _PlaySoundUp(MainPart: BasePart?): ()
@@ -1795,7 +2456,7 @@ local function _PlaySoundUp(MainPart: BasePart?): ()
 		return
 	end
 
-	local SoundInstance: Instance? = MainPart:FindFirstChild(SOUND_UP_NAME)
+	local SoundInstance: Instance? = MainPart:FindFirstChild("Up")
 	if not SoundInstance or not SoundInstance:IsA("Sound") then
 		return
 	end
@@ -1807,7 +2468,9 @@ local function _HandleDropSequence(CandyData: CandyVisual, DropEffectData: DropE
 	if not CandyData.Model then
 		return
 	end
-
+	if not DropEffectData then
+		return
+	end
 	DropEffectData = _EnsureDropEffect(DropEffectData)
 	if not DropEffectData then
 		return
@@ -1824,10 +2487,11 @@ end
 
 local function _BindCandyState(
 	Plot: Model,
+	GroupId: string,
+	SlotId: string,
 	Keys: CandyAttributeKeys,
 	CanPosition: BasePart,
 	Parent: Instance,
-	SlotId: string,
 	TapId: number?,
 	DropEffectData: DropEffect?,
 	MainPart: BasePart?,
@@ -1837,15 +2501,27 @@ local function _BindCandyState(
 	local CandyData: CandyVisual = {
 		State = {
 			Plot = Plot,
+			GroupId = GroupId,
+			SlotId = SlotId,
 			Keys = Keys,
 		},
 		Model = nil,
 		CanPosition = CanPosition,
 		Parent = Parent,
 		Highlight = nil,
+		MutationHighlight = nil,
+		MutationConnection = nil,
 		ClickDetector = nil,
-		Billboard = nil,
+		LevelBar = nil,
 		LevelLabel = nil,
+		XpLabel = nil,
+		BarFrame = nil,
+		MutationFrame = nil,
+		MutationTemplate = nil,
+		MutationClones = nil,
+		MutationTextConnection = nil,
+		LevelBarSize = nil,
+		LevelBarOffset = nil,
 		BaseScale = 1,
 		IsRemoving = false,
 		IsBouncing = false,
@@ -1854,456 +2530,61 @@ local function _BindCandyState(
 		PendingScale = nil,
 		BounceConnection = nil,
 		SpawnConnection = nil,
+		MutationKey = nil,
 		SlotId = SlotId,
 		TapId = TapId,
 		AllowInteraction = AllowInteraction,
 		AllowAttract = false,
+		PickupCooldownUntil = nil,
 	}
 
-	Plot:GetAttributeChangedSignal(Keys.CandyModel):Connect(function(): ()
+	_ConnectValueChanged(Plot, Keys.CandyModel, function(): ()
 		_HandleCandyModelChanged(CandyData)
 	end)
 
-	Plot:GetAttributeChangedSignal(Keys.CandyScale):Connect(function(): ()
+	_ConnectValueChanged(Plot, Keys.CandyScale, function(): ()
 		_HandleCandyScaleChanged(CandyData)
 	end)
-	Plot:GetAttributeChangedSignal(Keys.CandyLevel):Connect(function(): ()
-		_UpdateCandyBillboard(CandyData)
+	_ConnectValueChanged(Plot, Keys.CandyLevel, function(): ()
+		module._UpdateCandyBillboard(CandyData)
 	end)
-	Plot:GetAttributeChangedSignal(Keys.CandyProgress):Connect(function(): ()
-		_UpdateCandyBillboard(CandyData)
+	_ConnectValueChanged(Plot, Keys.CandyProgress, function(): ()
+		module._UpdateCandyBillboard(CandyData)
+	end)
+	_ConnectValueChanged(Plot, Keys.Mutations, function(): ()
+		module._UpdateCandyBillboard(CandyData)
+		module._UpdateCandyMutationHighlight(CandyData)
 	end)
 
-	Plot:GetAttributeChangedSignal(Keys.DropSequence):Connect(function(): ()
+	_ConnectValueChanged(Plot, Keys.DropSequence, function(): ()
 		_HandleDropSequence(CandyData, DropEffectData, MainPart, DropTime)
 	end)
 
-	Plot:GetAttributeChangedSignal(Keys.RemoveSequence):Connect(function(): ()
+	_ConnectValueChanged(Plot, Keys.RemoveSequence, function(): ()
 		_HandleCandyRemove(CandyData)
 	end)
 
 	_HandleCandyModelChanged(CandyData)
 	_HandleCandyScaleChanged(CandyData)
-	_UpdateCandyBillboard(CandyData)
-end
-
-local function _SetupNormalDropper(DropperData: DropperVisual, SlotFolder: Instance): ()
-	local CanPosition: BasePart? = _FindDescendant(DropperData.Model, CAN_POSITION_NAME) :: BasePart?
-	if not CanPosition then
-		_Debug("CanPosition missing in Dropper %s", DropperData.Model.Name)
-		return
-	end
-	DropperData.CanPosition = CanPosition
-
-	if not DropperData.DropEffect then
-		DropperData.DropEffect = _CreateDropEffect()
-	end
-
-	local Keys: CandyAttributeKeys = _BuildCandyAttributeKeys(DropperData.SlotId, nil)
-	local Plot: Model = DropperData.Plot
-
-	local function RefreshCandyState(): ()
-		local ModelName: string = _GetStringAttribute(Plot, Keys.CandyModel, EMPTY_STRING)
-		_SetDropperHasCandy(DropperData, ModelName ~= EMPTY_STRING)
-	end
-
-	Plot:GetAttributeChangedSignal(Keys.CandyModel):Connect(function(): ()
-		RefreshCandyState()
-	end)
-	RefreshCandyState()
-
-	_BindCandyState(
-		DropperData.Plot,
-		Keys,
-		CanPosition,
-		SlotFolder,
-		DropperData.SlotId,
-		nil,
-		DropperData.DropEffect,
-		DropperData.MainPart,
-		TimingConfig.ManualDropTime,
-		DropperData.IsLocalOwner
-	)
-end
-
-local function _SortTapsByPosition(Taps: { Model }): { Model }
-	table.sort(Taps, function(Left: Model, Right: Model): boolean
-		local LeftPos: Vector3 = Left:GetPivot().Position
-		local RightPos: Vector3 = Right:GetPivot().Position
-		return LeftPos.X < RightPos.X
-	end)
-	return Taps
-end
-
-local function _CollectTapModels(DropperModel: Model): { Model }
-	local TapModels: { Model } = table.create(DropperConfig.AutoTapCount)
-	for _, Child: Instance in DropperModel:GetChildren() do
-		if Child:IsA("Model") and Child.Name == TAP_NAME then
-			table.insert(TapModels, Child)
-		end
-	end
-	return _SortTapsByPosition(TapModels)
-end
-
-local function _SetupAutoDropper(DropperData: DropperVisual, SlotFolder: Instance): ()
-	local TapModels: { Model } = _CollectTapModels(DropperData.Model)
-	if #TapModels <= 0 then
-		_Debug("No Tap models found in Dropper2 %s", DropperData.Model.Name)
-		return
-	end
-
-	_Debug("Auto Dropper taps: %d in %s", #TapModels, DropperData.Model.Name)
-
-	local TapDataMap: { [number]: TapVisual } = {}
-	for Index: number = 1, math.min(#TapModels, DropperConfig.AutoTapCount) do
-		local TapModel: Model = TapModels[Index]
-
-		local MainPart: BasePart? = _FindDescendant(TapModel, MAIN_PART_NAME) :: BasePart?
-		local CanPosition: BasePart? = _FindDescendant(TapModel, CAN_POSITION_NAME) :: BasePart?
-		if not CanPosition then
-			_Debug("CanPosition missing in Tap %s", TapModel.Name)
-			continue
-		end
-
-		local DropEffectData: DropEffect = _CreateDropEffect()
-		local TapData: TapVisual = {
-			TapModel = TapModel,
-			MainPart = MainPart,
-			CanPosition = CanPosition,
-			DropEffect = DropEffectData,
-			Candy = nil,
-			TapId = Index,
-			Hitbox = nil,
-			HoverDetector = nil,
-			PulseTween = nil,
-			HasCandy = false,
-			PreviewModel = nil,
-			PreviewName = nil,
-		}
-
-		TapDataMap[Index] = TapData
-		local Keys: CandyAttributeKeys = _BuildCandyAttributeKeys(DropperData.SlotId, Index)
-		_BindCandyState(
-			DropperData.Plot,
-			Keys,
-			CanPosition,
-			SlotFolder,
-			DropperData.SlotId,
-			Index,
-			DropEffectData,
-			MainPart,
-			TimingConfig.AutoDropTime,
-			DropperData.IsLocalOwner
-		)
-
-		local function RefreshCandyState(): ()
-			local ModelName: string = _GetStringAttribute(DropperData.Plot, Keys.CandyModel, EMPTY_STRING)
-			TapData.HasCandy = ModelName ~= EMPTY_STRING
-		end
-
-		DropperData.Plot:GetAttributeChangedSignal(Keys.CandyModel):Connect(function(): ()
-			RefreshCandyState()
-		end)
-		RefreshCandyState()
-
-		-- Tap hover/click using Hitbox inside each Tap.
-		local TapHitbox: BasePart? = _FindHitbox(TapModel)
-		if not TapHitbox then
-			_Debug("Hitbox missing in Tap %s (children: %s)", TapModel.Name, _DescribeChildren(TapModel))
-		else
-			if not DropperData.IsLocalOwner then
-				_SetQueryMask(TapModel, {})
-				continue
-			end
-			TapHitbox.CanCollide = false
-			TapHitbox.CanTouch = false
-			TapHitbox.CanQuery = true
-			TapHitbox.Color = Color3.fromRGB(255, 255, 255)
-			TapHitbox.Transparency = 1
-			TapHitbox.LocalTransparencyModifier = 1
-			TapData.Hitbox = TapHitbox
-			_SetQueryMask(TapModel, { [TapHitbox] = true })
-
-			local TapDetector: ClickDetector = TapHitbox:FindFirstChildOfClass("ClickDetector") or Instance.new("ClickDetector")
-			TapDetector.MaxActivationDistance = MAX_ACTIVATION_DISTANCE
-			TapDetector.CursorIcon = "rbxassetid://96499340217478"
-			TapDetector.Parent = TapHitbox
-			TapData.HoverDetector = TapDetector
-
-			TapDetector.MouseHoverEnter:Connect(function(): ()
-				_SetActiveHoverTap(TapData, DropperData)
-				_SetDropperHover(DropperData, true)
-				_ClearTapPreview(TapData)
-				if not TapData.HasCandy then
-					local ToolInstance: Tool? = _GetEquippedTool()
-					if ToolInstance then
-						local CandyName: string? = _GetCandyNameFromTool(ToolInstance)
-						if CandyName and TapData.CanPosition then
-							_ShowTapPreview(TapData, CandyName, TapData.CanPosition.CFrame, DropperData.Model.Parent or DropperData.Model)
-						end
-					end
-				end
-			end)
-
-			TapDetector.MouseHoverLeave:Connect(function(): ()
-				_SetDropperHover(DropperData, false)
-				_ClearTapPreview(TapData)
-				_ClearActiveHoverTap(TapData)
-				_ClearActiveHoverDropper(DropperData)
-			end)
-
-			TapDetector.MouseClick:Connect(function(): ()
-				_ClearTapPreview(TapData)
-				if TapData.HasCandy then
-					_FlashDropper(DropperData, DROPPER_REMOVE_COLOR)
-					_PlayDropperClickScale(DropperData, DropperData.BaseScale * CLICK_SHRINK_SCALE)
-					Packets.Dropper:Fire(ACTION_REMOVE_CANDY, { DropperData.SlotId, TapData.TapId })
-					return
-				end
-
-				local ToolInstance: Tool? = _GetEquippedTool()
-				if not ToolInstance then
-					_FlashDropper(DropperData, DROPPER_REMOVE_COLOR)
-					_PlayDropperClickScale(DropperData, DropperData.BaseScale * CLICK_SHRINK_SCALE)
-					return
-				end
-
-				local CandyName: string? = _GetCandyNameFromTool(ToolInstance)
-				if not CandyName then
-					_FlashDropper(DropperData, DROPPER_REMOVE_COLOR)
-					_PlayDropperClickScale(DropperData, DropperData.BaseScale * CLICK_SHRINK_SCALE)
-					return
-				end
-
-				_FlashDropper(DropperData, DROPPER_PLACE_COLOR)
-				_PlayDropperClickScale(DropperData, _GetReturnScale(DropperData) + CLICK_BOUNCE_SCALE)
-				Packets.Dropper:Fire(ACTION_PLACE_CANDY, { DropperData.SlotId, TapData.TapId })
-			end)
-		end
-	end
-
-	DropperData.Taps = TapDataMap
-end
-
-local function _SetupDropperHover(DropperData: DropperVisual): ()
-	local HoverPart: BasePart? = _FindHitbox(DropperData.Model)
-
-	if not HoverPart then
-		_Debug("Hitbox missing for %s (children: %s)", DropperData.Model.Name, _DescribeChildren(DropperData.Model))
-		return
-	end
-	HoverPart.CanCollide = false
-	HoverPart.CanTouch = false
-	HoverPart.CanQuery = true
-	HoverPart.Transparency = 1
-	HoverPart.LocalTransparencyModifier = 1
-	local Allowed: { [Instance]: boolean } = { [HoverPart] = true }
-	if DropperData.ButtonPart then
-		Allowed[DropperData.ButtonPart] = true
-	end
-	_SetQueryMask(DropperData.Model, Allowed)
-
-	_EnsureDropperHighlight(DropperData)
-
-	local ExistingDetector: ClickDetector? = HoverPart:FindFirstChildOfClass("ClickDetector")
-	local Detector: ClickDetector = ExistingDetector or Instance.new("ClickDetector")
-	Detector.MaxActivationDistance = MAX_ACTIVATION_DISTANCE
-	Detector.CursorIcon = "rbxassetid://96499340217478"
-	Detector.Parent = HoverPart
-	DropperData.HoverDetector = Detector
-	if DEBUG_HOVER then
-		_Debug(
-			"Hover detector ready for %s (part=%s, maxDist=%.1f)",
-			DropperData.Model.Name,
-			_DescribeInstance(HoverPart),
-			MAX_ACTIVATION_DISTANCE
-		)
-	end
-
-	Detector.MouseHoverEnter:Connect(function(): ()
-		if DEBUG_HOVER then
-			_Debug("MouseHoverEnter on %s", DropperData.Model.Name)
-		end
-		_SetActiveHoverDropper(DropperData)
-		_SetDropperHover(DropperData, true)
-		_ClearDropperPreview(DropperData)
-		if not DropperData.HasCandy then
-			local ToolInstance: Tool? = _GetEquippedTool()
-			if ToolInstance then
-				local CandyName: string? = _GetCandyNameFromTool(ToolInstance)
-				if CandyName then
-					local PreviewCFrame: CFrame = if DropperData.CanPosition then DropperData.CanPosition.CFrame else DropperData.Model:GetPivot()
-					_ShowDropperPreview(DropperData, CandyName, PreviewCFrame)
-				end
-			end
-		end
-	end)
-
-	Detector.MouseHoverLeave:Connect(function(): ()
-		if DEBUG_HOVER then
-			_Debug("MouseHoverLeave on %s", DropperData.Model.Name)
-		end
-		_SetDropperHover(DropperData, false)
-		_ClearDropperPreview(DropperData)
-		_ClearActiveHoverDropper(DropperData)
-	end)
-
-	Detector.MouseClick:Connect(function(): ()
-		_ClearDropperPreview(DropperData)
-		if DEBUG_HOVER then
-			_Debug("MouseClick on %s (slot %s)", DropperData.Model.Name, DropperData.SlotId)
-		end
-
-		if DropperData.HasCandy then
-			if DEBUG_HOVER then
-				_Debug("Click -> remove candy")
-			end
-			_FlashDropper(DropperData, DROPPER_REMOVE_COLOR)
-			_PlayDropperClickScale(DropperData, DropperData.BaseScale * CLICK_SHRINK_SCALE)
-			Packets.Dropper:Fire(ACTION_REMOVE_CANDY, { DropperData.SlotId })
-			return
-		end
-
-		local ToolInstance: Tool? = _GetEquippedTool()
-		if not ToolInstance then
-			if DEBUG_HOVER then
-				_Debug("Click -> no tool equipped")
-			end
-			_FlashDropper(DropperData, DROPPER_REMOVE_COLOR)
-			_PlayDropperClickScale(DropperData, DropperData.BaseScale * CLICK_SHRINK_SCALE)
-			return
-		end
-
-		local CandyName: string? = _GetCandyNameFromTool(ToolInstance)
-		if not CandyName then
-			if DEBUG_HOVER then
-				_Debug("Click -> tool not matched to candy (%s)", ToolInstance.Name)
-			end
-			_FlashDropper(DropperData, DROPPER_REMOVE_COLOR)
-			_PlayDropperClickScale(DropperData, DropperData.BaseScale * CLICK_SHRINK_SCALE)
-			return
-		end
-
-		if DEBUG_HOVER then
-			_Debug("Click -> place candy %s", CandyName)
-		end
-		_FlashDropper(DropperData, DROPPER_PLACE_COLOR)
-		_PlayDropperClickScale(DropperData, _GetReturnScale(DropperData) + CLICK_BOUNCE_SCALE)
-		Packets.Dropper:Fire(ACTION_PLACE_CANDY, { DropperData.SlotId })
-	end)
-end
-
-local function _SetupDropperButton(DropperData: DropperVisual): ()
-	local ButtonPart: BasePart? = DropperData.ButtonPart
-	if not ButtonPart then
-		return
-	end
-
-	local Detector: ClickDetector? = ButtonPart:FindFirstChildOfClass("ClickDetector")
-	if not Detector then
-		return
-	end
-	local Keys: CandyAttributeKeys = _BuildCandyAttributeKeys(DropperData.SlotId, nil)
-	ButtonPart.Size = BUTTON_BASE_SIZE
-	ButtonPart:SetAttribute("IsHovering", false)
-	ButtonPart:SetAttribute("IsCooldown", false)
-
-	local ButtonHighlight: Highlight = Instance.new("Highlight")
-	ButtonHighlight.FillColor = BUTTON_READY_COLOR
-	ButtonHighlight.FillTransparency = 1
-	ButtonHighlight.OutlineTransparency = 1
-	ButtonHighlight.Adornee = ButtonPart
-	ButtonHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-	ButtonHighlight.Enabled = false
-	ButtonHighlight.Parent = ButtonPart
-	_SetButtonHighlightState(ButtonHighlight, false)
-
-	Detector.MouseClick:Connect(function(): ()
-		if _IsButtonOnCooldown(ButtonPart) then
-			return
-		end
-
-		local ModelName: string = _GetStringAttribute(DropperData.Plot, Keys.CandyModel, EMPTY_STRING)
-		if ModelName == EMPTY_STRING then
-			_PlayButtonClick(ButtonPart)
-			_FlashDropper(DropperData, DROPPER_REMOVE_COLOR)
-			_PlayDropperClickScale(DropperData, _GetReturnScale(DropperData) + CLICK_BOUNCE_SCALE)
-			return
-		end
-
-		local Level: number = _GetNumberAttribute(DropperData.Plot, Keys.CandyLevel, DEFAULT_NUMBER)
-		local MaxLevel: number = _GetCandyMaxLevelForBillboard(ModelName)
-		if MaxLevel > 0 and Level >= MaxLevel then
-			_PlayButtonClick(ButtonPart)
-			_FlashDropper(DropperData, DROPPER_REMOVE_COLOR)
-			_PlayDropperClickScale(DropperData, _GetReturnScale(DropperData) + CLICK_BOUNCE_SCALE)
-			return
-		end
-
-		_PlayButtonClick(ButtonPart)
-		local CooldownEnd: number = os.clock() + TimingConfig.ManualDebounce
-		_ButtonCooldownUntil[ButtonPart] = CooldownEnd
-		ButtonPart:SetAttribute("IsCooldown", true)
-		_SetButtonHighlightState(ButtonHighlight, true)
-		ButtonHighlight.Enabled = true
-		TweenModule:Tween(ButtonHighlight, 0.1, "Sine", "Out", { FillTransparency = 0.8 }, 0, false, nil)
-
-		Packets.Dropper:Fire(ACTION_DROP, { DropperData.SlotId })
-
-		task.delay(TimingConfig.ManualDebounce, function(): ()
-			if _ButtonCooldownUntil[ButtonPart] ~= CooldownEnd then
-				return
-			end
-			_ButtonCooldownUntil[ButtonPart] = nil
-			ButtonPart:SetAttribute("IsCooldown", false)
-			_SetButtonHighlightState(ButtonHighlight, false)
-			if ButtonPart:GetAttribute("IsHovering") then
-				ButtonHighlight.Enabled = true
-				TweenModule:Tween(ButtonHighlight, 0.1, "Sine", "Out", { FillTransparency = 0.8 }, 0, false, nil)
-			else
-				TweenModule:Tween(ButtonHighlight, 0.1, "Sine", "Out", { FillTransparency = 1 }, 0, false, function(): ()
-					ButtonHighlight.Enabled = false
-				end)
-			end
-		end)
-	end)
-
-	Detector.MouseHoverEnter:Connect(function(): ()
-		ButtonPart:SetAttribute("IsHovering", true)
-		_TweenButtonSize(ButtonPart, BUTTON_BASE_SIZE * BUTTON_HOVER_SCALE, BUTTON_HOVER_TIME, nil)
-		_SetButtonHighlightState(ButtonHighlight, _IsButtonOnCooldown(ButtonPart))
-		ButtonHighlight.Enabled = true
-		TweenModule:Tween(ButtonHighlight, 0.1, "Sine", "Out", { FillTransparency = 0.8 }, 0, false, nil)
-	end)
-
-	Detector.MouseHoverLeave:Connect(function(): ()
-		ButtonPart:SetAttribute("IsHovering", false)
-		_TweenButtonSize(ButtonPart, BUTTON_BASE_SIZE, BUTTON_HOVER_TIME, nil)
-		if _IsButtonOnCooldown(ButtonPart) then
-			_SetButtonHighlightState(ButtonHighlight, true)
-			ButtonHighlight.Enabled = true
-			TweenModule:Tween(ButtonHighlight, 0.1, "Sine", "Out", { FillTransparency = 0.8 }, 0, false, nil)
-			return
-		end
-		TweenModule:Tween(ButtonHighlight, 0.1, "Sine", "Out", { FillTransparency = 1 }, 0, false, function(): ()
-			ButtonHighlight.Enabled = false
-		end)
-	end)
+	module._UpdateCandyBillboard(CandyData)
+	module._UpdateCandyMutationHighlight(CandyData)
 end
 
 local function _CloneDropperModel(
 	SlotContainer: Instance,
 	ParentContainer: Instance,
+	GroupConfig: any,
 	AssetName: string,
 	SlotPartName: string,
 	RotationDegrees: number
 ): (Model?, BasePart?)
 	local AssetsRoot: Instance = ReplicatedStorage:WaitForChild(ASSETS_ROOT_NAME)
-	local AssetsFolder: Instance = AssetsRoot:WaitForChild(AssetsConfig.DroppersFolder)
+	local MachinesFolder: Instance = AssetsRoot:WaitForChild(MACHINES_FOLDER_NAME)
+	local AssetsFolder: Instance = MachinesFolder:WaitForChild(GroupConfig.AssetsFolder)
 
 	local Asset: Instance? = AssetsFolder:FindFirstChild(AssetName)
 	if not Asset or not Asset:IsA("Model") then
-		_Debug("Dropper asset missing: %s", AssetName)
+		_Debug("Machine asset missing: %s", AssetName)
 		return nil, nil
 	end
 
@@ -2373,25 +2654,28 @@ end
 
 local function _SetupDropperVisual(
 	Plot: Model,
+	GroupId: string,
+	GroupConfig: any,
 	SlotContainer: Instance,
 	ParentContainer: Instance,
 	SlotId: string,
-	AssetName: string,
-	SlotPartName: string,
+	SlotConfig: any,
 	RotationDegrees: number,
-	DropperType: string,
 	IsLocalOwner: boolean
 ): DropperVisual?
 	local Clone: Model?
 	local SlotPart: BasePart?
-	Clone, SlotPart = _CloneDropperModel(SlotContainer, ParentContainer, AssetName, SlotPartName, RotationDegrees)
+	Clone, SlotPart = _CloneDropperModel(SlotContainer, ParentContainer, GroupConfig, SlotConfig.AssetName, SlotConfig.SlotPartName, RotationDegrees)
 	if not Clone then
 		return nil
 	end
 
-	local MainPart: BasePart? = _FindDescendant(Clone, MAIN_PART_NAME) :: BasePart?
+	local MainPart: BasePart? = nil
+	if SlotConfig.UseMainPart then
+		MainPart = _FindDescendant(Clone, MAIN_PART_NAME) :: BasePart?
+	end
 	local ButtonPart: BasePart? = _FindDescendant(Clone, BUTTON_PART_NAME) :: BasePart?
-	if not MainPart then
+	if SlotConfig.UseMainPart and not MainPart then
 		_Debug("Main part missing in %s", Clone.Name)
 	end
 
@@ -2400,8 +2684,10 @@ local function _SetupDropperVisual(
 	local DropperData: DropperVisual = {
 		Model = Clone,
 		Plot = Plot,
+		GroupId = GroupId,
 		SlotId = SlotId,
-		Type = DropperType,
+		Type = SlotConfig.Type,
+		Config = SlotConfig,
 		MainPart = MainPart,
 		ButtonPart = ButtonPart,
 		CanPosition = nil,
@@ -2422,17 +2708,83 @@ local function _SetupDropperVisual(
 
 	_EnsureDropperHighlight(DropperData)
 
-	if DropperData.IsLocalOwner then
-		if DropperType == DropperConfig.TypeNormal then
-			_SetupDropperHover(DropperData)
-			_SetupDropperButton(DropperData)
-		end
-	else
-		_SetQueryMask(DropperData.Model, {})
-	end
-
 	return DropperData
 end
+
+local _GroupModules: { [string]: any } = {
+	Droppers = DroppersModule,
+	Sprinklers = SprinklersModule,
+}
+
+local _MachineApi = {
+	Debug = _Debug,
+	DescribeChildren = _DescribeChildren,
+	FindDescendant = _FindDescendant,
+	FindHitbox = _FindHitbox,
+	SetQueryMask = _SetQueryMask,
+	EnsureDropperHighlight = _EnsureDropperHighlight,
+	SetActiveHoverTap = function(TapData: any, DropperData: any): ()
+		DroppersModule.SetActiveHoverTap(_MachineApi, TapData, DropperData)
+	end,
+	SetActiveHoverDropper = function(DropperData: any): ()
+		DroppersModule.SetActiveHoverDropper(_MachineApi, DropperData)
+	end,
+	ClearActiveHoverTap = function(TapData: any): ()
+		DroppersModule.ClearActiveHoverTap(_MachineApi, TapData)
+	end,
+	ClearActiveHoverDropper = function(DropperData: any): ()
+		DroppersModule.ClearActiveHoverDropper(_MachineApi, DropperData)
+	end,
+	SetDropperHover = _SetDropperHover,
+	ClearDropperPreview = _ClearDropperPreview,
+	ShowDropperPreview = _ShowDropperPreview,
+	ClearTapPreview = _ClearTapPreview,
+	ShowTapPreview = _ShowTapPreview,
+	ClearOtherPreviews = _ClearOtherPreviews,
+	GetEquippedTool = _GetEquippedTool,
+	GetCandyNameFromTool = _GetCandyNameFromTool,
+	FlashDropper = _FlashDropper,
+	PlayDropperClickScale = _PlayDropperClickScale,
+	GetReturnScale = _GetReturnScale,
+	BuildCandyAttributeKeys = _BuildCandyAttributeKeys,
+	BindCandyState = _BindCandyState,
+	GetStringAttribute = _GetStringAttribute,
+	GetNumberAttribute = _GetNumberAttribute,
+	GetValueChangedSignal = _GetValueChangedSignal,
+	CreateDropEffect = _CreateDropEffect,
+	IsButtonOnCooldown = _IsButtonOnCooldown,
+	SetButtonHighlightState = _SetButtonHighlightState,
+	TweenButtonSize = _TweenButtonSize,
+	PlayButtonClick = _PlayButtonClick,
+	GetCandyMaxLevelForBillboard = _GetCandyMaxLevelForBillboard,
+	TweenModule = TweenModule,
+	Timing = TimingConfig,
+	Packets = Packets,
+	ActionPlace = ACTION_PLACE_CANDY,
+	ActionRemove = ACTION_REMOVE_CANDY,
+	ActionDrop = ACTION_DROP,
+	EmptyString = EMPTY_STRING,
+	CanPositionName = CAN_POSITION_NAME,
+	MainPartName = MAIN_PART_NAME,
+	TapName = TAP_NAME,
+	HitboxPartName = HITBOX_PART_NAME,
+	ButtonPartName = BUTTON_PART_NAME,
+	MaxActivationDistance = 1000,
+	DropperHighlightColor = DROPPER_HIGHLIGHT_COLOR,
+	DropperPlaceColor = DROPPER_PLACE_COLOR,
+	DropperRemoveColor = DROPPER_REMOVE_COLOR,
+	ClickShrinkScale = 0.92,
+	ClickBounceScale = 0.08,
+	ButtonBaseSize = BUTTON_BASE_SIZE,
+	ButtonHoverScale = BUTTON_HOVER_SCALE,
+	ButtonHoverTime = BUTTON_HOVER_TIME,
+	ButtonClickScale = BUTTON_CLICK_SCALE,
+	ButtonReadyColor = BUTTON_READY_COLOR,
+	ButtonCooldownColor = BUTTON_COOLDOWN_COLOR,
+	HologramEnabled = HOLOGRAM_ENABLED,
+	DebugHover = DEBUG_HOVER,
+	CursorIcon = "rbxassetid://96499340217478",
+}
 
 local function _SetupPlotVisual(Plot: Model): ()
 	if _PlotVisuals[Plot] then
@@ -2442,119 +2794,82 @@ local function _SetupPlotVisual(Plot: Model): ()
 		_WatchPlotOwner(Plot)
 		return
 	end
+
+	_WaitForMemorieMachinesFolder(Plot)
+
 	local IsLocalOwner: boolean = _IsPlotOwnedByLocalPlayer(Plot)
-	local NormalRotation: number = _GetPlotRotation(Plot, DropperConfig.SlotLong, DropperConfig.RotationNormal)
-	local AutoRotation: number = _GetPlotRotation(Plot, DropperConfig.SlotWide, DropperConfig.RotationAuto)
-
-	local DroppersFolder: Instance? = Plot:FindFirstChild(AssetsConfig.DroppersFolder)
-	if not DroppersFolder then
-		_Debug("Droppers folder missing in plot %s", Plot.Name)
-		return
-	end
-
-	local LongSlotFolder: Instance? = _FindSlotContainer(DroppersFolder, DropperConfig.SlotLong, LONG_SLOT_PART_NAME)
-	local WideSlotFolder: Instance? = _FindSlotContainer(DroppersFolder, DropperConfig.SlotWide, WIDE_SLOT_PART_NAME)
-
-	_Debug(
-		"Plot %s, Slots: Long=%s Wide=%s",
-		Plot.Name,
-		_DescribeInstance(LongSlotFolder),
-		_DescribeInstance(WideSlotFolder)
-	)
-
 	local PlotData: PlotVisual = {
 		Plot = Plot,
-		DroppersFolder = DroppersFolder,
-		LongSlot = LongSlotFolder,
-		WideSlot = WideSlotFolder,
-		DropperLong = nil,
-		DropperWide = nil,
+		Groups = {},
 	}
 
-	if LongSlotFolder then
-		local LongParent: Instance = _ResolveSlotParent(LongSlotFolder, DroppersFolder)
-		_Debug("Long slot parent: %s", _DescribeInstance(LongParent))
-		PlotData.DropperLong = _SetupDropperVisual(
-			Plot,
-			LongSlotFolder,
-			LongParent,
-			DropperConfig.SlotLong,
-			AssetsConfig.DropperModel,
-			LONG_SLOT_PART_NAME,
-			NormalRotation,
-			DropperConfig.TypeNormal,
-			IsLocalOwner
-		)
-
-		if not PlotData.DropperLong then
-			_WatchSlotPart(LongSlotFolder, LONG_SLOT_PART_NAME, function(): ()
-				if PlotData.DropperLong then
-					return
-				end
-				PlotData.DropperLong = _SetupDropperVisual(
-					Plot,
-					LongSlotFolder,
-					LongParent,
-					DropperConfig.SlotLong,
-					AssetsConfig.DropperModel,
-					LONG_SLOT_PART_NAME,
-					NormalRotation,
-					DropperConfig.TypeNormal,
-					IsLocalOwner
-				)
-				if PlotData.DropperLong then
-					_SetupNormalDropper(PlotData.DropperLong, LongParent)
-				end
-			end)
+	for GroupId: string, GroupConfig: any in MachinesConfig do
+		local GroupFolder: Instance? = Plot:FindFirstChild(GroupConfig.PlotFolder)
+		if not GroupFolder then
+			_Debug("%s folder missing in plot %s", GroupConfig.PlotFolder, Plot.Name)
+			continue
 		end
-	end
 
-	if WideSlotFolder then
-		local WideParent: Instance = _ResolveSlotParent(WideSlotFolder, DroppersFolder)
-		_Debug("Wide slot parent: %s", _DescribeInstance(WideParent))
-		PlotData.DropperWide = _SetupDropperVisual(
-			Plot,
-			WideSlotFolder,
-			WideParent,
-			DropperConfig.SlotWide,
-			AssetsConfig.Dropper2Model,
-			WIDE_SLOT_PART_NAME,
-			AutoRotation,
-			DropperConfig.TypeAuto,
-			IsLocalOwner
-		)
+		local GroupVisual = {
+			Folder = GroupFolder,
+			Slots = {},
+		}
 
-		if not PlotData.DropperWide then
-			_WatchSlotPart(WideSlotFolder, WIDE_SLOT_PART_NAME, function(): ()
-				if PlotData.DropperWide then
-					return
+		for SlotId: string, SlotConfig: any in GroupConfig.Slots do
+			local SlotFolder: Instance? = _FindSlotContainer(GroupFolder, SlotId, SlotConfig.SlotPartName)
+			if not SlotFolder then
+				continue
+			end
+
+			local ParentContainer: Instance = _ResolveSlotParent(SlotFolder, GroupFolder)
+			local Rotation: number = _GetPlotRotation(Plot, SlotId, SlotConfig.RotationDefault)
+			local SlotVisual: DropperVisual? = _SetupDropperVisual(
+				Plot,
+				GroupId,
+				GroupConfig,
+				SlotFolder,
+				ParentContainer,
+				SlotId,
+				SlotConfig,
+				Rotation,
+				IsLocalOwner
+			)
+
+			if SlotVisual then
+				GroupVisual.Slots[SlotId] = SlotVisual
+				local Handler: any = _GroupModules[GroupId]
+				if Handler and Handler.SetupSlot then
+					Handler.SetupSlot(_MachineApi, SlotVisual, ParentContainer)
 				end
-				PlotData.DropperWide = _SetupDropperVisual(
-					Plot,
-					WideSlotFolder,
-					WideParent,
-					DropperConfig.SlotWide,
-					AssetsConfig.Dropper2Model,
-					WIDE_SLOT_PART_NAME,
-					AutoRotation,
-					DropperConfig.TypeAuto,
-					IsLocalOwner
-				)
-				if PlotData.DropperWide then
-					_SetupAutoDropper(PlotData.DropperWide, WideParent)
-				end
-			end)
+			else
+				_WatchSlotPart(SlotFolder, SlotConfig.SlotPartName, function(): ()
+					if GroupVisual.Slots[SlotId] then
+						return
+					end
+					local RetryVisual: DropperVisual? = _SetupDropperVisual(
+						Plot,
+						GroupId,
+						GroupConfig,
+						SlotFolder,
+						ParentContainer,
+						SlotId,
+						SlotConfig,
+						Rotation,
+						IsLocalOwner
+					)
+					if RetryVisual then
+						GroupVisual.Slots[SlotId] = RetryVisual
+						local RetryHandler: any = _GroupModules[GroupId]
+						if RetryHandler and RetryHandler.SetupSlot then
+							RetryHandler.SetupSlot(_MachineApi, RetryVisual, ParentContainer)
+						end
+					end
+				end)
+			end
 		end
-	end
 
-	if PlotData.DropperWide and WideSlotFolder then
-		local WideParent: Instance = _ResolveSlotParent(WideSlotFolder, DroppersFolder)
-		_SetupAutoDropper(PlotData.DropperWide, WideParent)
-	end
-
-	if PlotData.DropperLong and LongSlotFolder then
-		local LongParent: Instance = _ResolveSlotParent(LongSlotFolder, DroppersFolder)
-		_SetupNormalDropper(PlotData.DropperLong, LongParent)
+		UpgradesModule.SetupBoard(Plot, GroupId, GroupConfig, GroupFolder, IsLocalOwner)
+		PlotData.Groups[GroupId] = GroupVisual
 	end
 
 	_PlotVisuals[Plot] = PlotData
@@ -2621,19 +2936,39 @@ local function _AttachToolWatchers(Character: Model): ()
 
 	_ToolAddedConnection = Character.ChildAdded:Connect(function(Child: Instance): ()
 		if Child:IsA("Tool") then
-			_RefreshHoverPreview()
+			DroppersModule.RefreshHoverPreview(_MachineApi)
 		end
 	end)
 
 	_ToolRemovedConnection = Character.ChildRemoved:Connect(function(Child: Instance): ()
 		if Child:IsA("Tool") then
-			_RefreshHoverPreview()
+			DroppersModule.RefreshHoverPreview(_MachineApi)
 		end
 	end)
 end
 
 --\\ PUBLIC FUNCTIONS \\ -- TR
 function module:Init(): ()
+	UpgradesModule.Init({
+		Short = Short,
+		TweenService = TweenService,
+		TweenModule = TweenModule,
+		Packets = Packets,
+		ActionUpgradeLevel = ACTION_UPGRADE_LEVEL,
+		ActionUpgradeLevelMax = ACTION_UPGRADE_LEVEL_MAX,
+		ActionUpgradeSpecial = ACTION_UPGRADE_SPECIAL,
+		MaxUpgradeLevel = 100,
+		GetCoins = _GetLocalCoins,
+		GetUpgradeKey = _GetUpgradeKey,
+		GetNumberAttribute = _GetNumberAttribute,
+		ConnectValueChanged = _ConnectValueChanged,
+		DescribeChildren = _DescribeChildren,
+		TweenButtonSize = _TweenButtonSize,
+		DefaultNumber = DEFAULT_NUMBER,
+	})
+
+	_BindCoinsWatcher()
+
 	_PreloadAssets()
 	local Player: Player? = Players.LocalPlayer
 	if Player then
@@ -2645,13 +2980,20 @@ function module:Init(): ()
 		end)
 	end
 
+	Packets.Machines.OnClientEvent:Connect(function(Action: string, Data: any): ()
+		if Action ~= "UpgradeResult" then
+			return
+		end
+		UpgradesModule.HandleUpgradeResult(Data)
+	end)
+
 	task.spawn(function(): ()
-		local MapInstance: Instance = workspace:WaitForChild(MAP_FOLDER_NAME)
+		local MapInstance: Instance = workspace:WaitForChild("Map")
 		if not (MapInstance:IsA("Folder") or MapInstance:IsA("Model")) then
 			return
 		end
 
-		local PlotsInstance: Instance = MapInstance:WaitForChild(PLOTS_FOLDER_NAME)
+		local PlotsInstance: Instance = MapInstance:WaitForChild("Plots")
 		if not (PlotsInstance:IsA("Folder") or PlotsInstance:IsA("Model")) then
 			return
 		end
@@ -2677,5 +3019,6 @@ function module:Start(): ()
 end
 
 return module
+
 
 

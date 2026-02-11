@@ -5,10 +5,10 @@
     "ReplicatedStorage": {
       "$ignoreUnknownInstances": true,
       "$path": "src/Shared",
-      "Animations": {
-        "$className": "Folder",
-        "$ignoreUnknownInstances": true
-      },
+        "Animations": {
+          "$className": "Folder",
+          "$ignoreUnknownInstances": true
+        },
       "Assets": {
         "$className": "Folder",
         "$ignoreUnknownInstances": true
@@ -27,8 +27,9 @@
         "$path": "src/Client"
       }
     },
-    "Workspace": {
-      "$ignoreUnknownInstances": true
+    "ServerScriptService": {
+      "$ignoreUnknownInstances": true,
+      "$path": "src/Server"
     }
   }
 }

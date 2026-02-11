@@ -21,7 +21,7 @@ return {
 	},
 
 	Plot = {
-		Droppers = {},
+		Machines = {},
 	},
 
 	Settings = {},

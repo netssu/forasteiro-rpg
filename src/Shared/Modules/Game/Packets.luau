@@ -2,10 +2,10 @@ local ReplicatedStorage = game:GetService('ReplicatedStorage')
 local Packet = require(ReplicatedStorage.Packages.Packet)
 
 return {
-	-- Definimos como Packet.String para enviar tudo como JSON seguro
-	Replicator = Packet('Replicator', Packet.String),
+	-- Main
+	Replicator = Packet('Replicator', Packet.String, Packet.Any),
+	Action = Packet('Action', Packet.String, Packet.Any),
+	Machines = Packet("Machines", Packet.String, Packet.Any),
 	Feed = Packet('Feed', Packet.String),
-	Action = Packet('Action', Packet.String, { Packet.Any }),
-	Dropper = Packet("Dropper", Packet.String, { Packet.Any }),
 	Rebirth = Packet('Rebirth'),
 }

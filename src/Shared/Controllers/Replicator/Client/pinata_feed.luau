@@ -1,26 +1,29 @@
 local module = {}
 
--- // SERVICES
 local TweenService = game:GetService("TweenService")
 local Debris = game:GetService("Debris")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
--- // CONSTANTS
-local BAR_LIFETIME = 3
-local PLAYER = Players.LocalPlayer
-local HIDE_TWEENS = {}
+local Abbreviate = require(ReplicatedStorage.Modules.Math.Abbreviate)
 
--- // ASSETS
+local PLAYER = Players.LocalPlayer
 local VFX_FOLDER = ReplicatedStorage.Assets:WaitForChild("VFX")
 
--- // PRIVATE FUNCTIONS
+local function FormatNumber(num: number)
+	if type(Abbreviate) == "function" then
+		return Abbreviate(num)
+	elseif type(Abbreviate) == "table" and Abbreviate.Format then
+		return Abbreviate:Format(num)
+	elseif type(Abbreviate) == "table" and Abbreviate.abbreviate then
+		return Abbreviate.abbreviate(num)
+	end
+	return tostring(num)
+end
+
 local function PlayVFX(vfxName: string, targetCFrame: CFrame)
 	local template = VFX_FOLDER:FindFirstChild(vfxName)
-	if not template then 
-		warn("VFX não encontrado: " .. vfxName)
-		return 
-	end
+	if not template then return end
 
 	local vfxPart = template:Clone()
 	vfxPart.CFrame = targetCFrame
@@ -45,18 +48,12 @@ local function GetLocalPinata()
 	local plotsFolder = map:FindFirstChild("Plots")
 	if not plotsFolder then return nil end
 
-	local plot = nil
 	for _, p in plotsFolder:GetChildren() do
 		if p:GetAttribute("Owner") == PLAYER.UserId then
-			plot = p
-			break
-		end
-	end
-
-	if plot then
-		local pinataFolder = plot:FindFirstChild("Pinata")
-		if pinataFolder then
-			return pinataFolder:FindFirstChild("Pinata") or pinataFolder:FindFirstChildWhichIsA("Model")
+			local pinataFolder = p:FindFirstChild("Pinata")
+			if pinataFolder then
+				return pinataFolder:FindFirstChild("Pinata") or pinataFolder:FindFirstChildWhichIsA("Model")
+			end
 		end
 	end
 	return nil
@@ -107,122 +104,113 @@ local function UpdateXPBar(model: Model, currentXP: number, requiredXP: number, 
 	local head = model.PrimaryPart or model:FindFirstChild("Handle")
 	if not head then return end
 
-	local billboard = model:FindFirstChild("XPBarGui")
-	
+	local billboard = model:FindFirstChild("XPBarGui") or model:FindFirstChild("LevelBar")
+	local levelBar = nil
+
 	if not billboard then
-		billboard = Instance.new("BillboardGui")
-		billboard.Name = "XPBarGui"
-		billboard.Size = UDim2.fromScale(7, 1.4) -- Tamanho fixo
-		billboard.StudsOffset = Vector3.new(0, 7.5, 0)
-		billboard.AlwaysOnTop = true
-		
-		local container = Instance.new("Frame")
-		container.Name = "Container"
-		container.Size = UDim2.fromScale(1, 0.5)
-		container.Position = UDim2.fromScale(0, 0.5)
-		container.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
-		container.BorderSizePixel = 0
-		container.Parent = billboard
-		
-		local containerCorner = Instance.new("UICorner")
-		containerCorner.CornerRadius = UDim.new(1, 0)
-		containerCorner.Parent = container
-		
-		local containerStroke = Instance.new("UIStroke")
-		containerStroke.Color = Color3.fromRGB(255, 255, 255)
-		containerStroke.Thickness = 4
-		containerStroke.Parent = container
+		local playerGui = PLAYER:FindFirstChild("PlayerGui")
+		local template = playerGui and playerGui:FindFirstChild("Main") and playerGui.Main:FindFirstChild("LevelBar")
 
-		local fill = Instance.new("Frame")
-		fill.Name = "Fill"
-		fill.Size = UDim2.fromScale(0, 1)
-		fill.BackgroundColor3 = Color3.fromRGB(0, 200, 255)
-		fill.BorderSizePixel = 0
-		fill.Parent = container
-		
-		local fillCorner = Instance.new("UICorner")
-		fillCorner.CornerRadius = UDim.new(1, 0)
-		fillCorner.Parent = fill
-		
-		local gradient = Instance.new("UIGradient")
-		gradient.Color = ColorSequence.new{
-			ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 200, 255)),
-			ColorSequenceKeypoint.new(1, Color3.fromRGB(100, 240, 255))
-		}
-		gradient.Rotation = 90
-		gradient.Parent = fill
+		if template then
+			levelBar = template:Clone()
+			levelBar.Name = "LevelBar"
 
-		local text = Instance.new("TextLabel")
-		text.Name = "InfoText"
-		text.Size = UDim2.fromScale(1, 0.8)
-		text.Position = UDim2.fromScale(0, -0.9)
-		text.BackgroundTransparency = 1
-		text.Font = Enum.Font.FredokaOne
-		text.TextColor3 = Color3.fromRGB(255, 255, 255)
-		text.TextScaled = true
-		text.Parent = billboard
-		
-		local textStroke = Instance.new("UIStroke")
-		textStroke.Thickness = 3
-		textStroke.Parent = text
-
-		billboard.Parent = model
+			if levelBar:IsA("GuiObject") then
+				levelBar.Size = UDim2.fromScale(1, 1)
+				levelBar.Position = UDim2.fromScale(0, 0)
+				levelBar.Visible = true
+				
+				billboard = Instance.new("BillboardGui")
+				billboard.Name = "XPBarGui"
+				billboard.Size = UDim2.fromScale(6, 1.5)
+				billboard.StudsOffset = Vector3.new(0, 7.5, 0)
+				billboard.AlwaysOnTop = true
+				levelBar.Parent = billboard
+				billboard.Parent = model
+			elseif levelBar:IsA("BillboardGui") then
+				billboard = levelBar
+				billboard.AlwaysOnTop = true
+				billboard.Parent = model
+			end
+		end
+	else
+		if billboard:IsA("BillboardGui") and billboard.Name == "LevelBar" then
+			levelBar = billboard
+		else
+			levelBar = billboard:FindFirstChild("LevelBar")
+		end
 	end
 
-	local percent = math.clamp(currentXP / requiredXP, 0, 1)
-	local container = billboard:FindFirstChild("Container")
-	local fill = container and container:FindFirstChild("Fill")
-	local text = billboard:FindFirstChild("InfoText")
+	if not levelBar then return end
 
-	if text then
-		text.Text = string.format("LEVEL %d  [%d/%d]", level, math.floor(currentXP), math.floor(requiredXP))
+	local levelText = levelBar:FindFirstChild("Level", true)
+	local xpText = levelBar:FindFirstChild("XP", true)
+	local barFrame = levelBar:FindFirstChild("BarFrame", true)
+
+	if levelText and levelText:IsA("TextLabel") then
+		levelText.Text = "Level " .. tostring(level)
 	end
-	
-	if fill then
-		TweenService:Create(fill, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+
+	if xpText and xpText:IsA("TextLabel") then
+		local formattedCurrent = FormatNumber(currentXP)
+		local formattedMax = FormatNumber(requiredXP)
+		xpText.RichText = true
+		xpText.Text = string.format('%s <font size="10" color="rgb(50,150,255)">XP</font> / %s <font size="10" color="rgb(50,150,255)">XP</font>', formattedCurrent, formattedMax)
+	end
+
+	if barFrame and barFrame:IsA("GuiObject") then
+		local percent = math.clamp(currentXP / requiredXP, 0, 1)
+		TweenService:Create(barFrame, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 			Size = UDim2.fromScale(percent, 1)
 		}):Play()
 	end
 
-	billboard.Enabled = true
-	
-	if HIDE_TWEENS[model] then
-		task.cancel(HIDE_TWEENS[model])
+	if billboard then
+		billboard.Enabled = true
 	end
-
-	HIDE_TWEENS[model] = task.delay(BAR_LIFETIME, function()
-		if billboard and billboard.Parent then
-			billboard.Enabled = false
-		end
-		HIDE_TWEENS[model] = nil
-	end)
 end
 
--- // MAIN FUNCTION
 function module:Start(data)
 	if not data then return end
 	
-	local xpAdded = data.XPAdded or "0"
+	local xpAdded = tonumber(data.XPAdded) or 0
 	local currentXP = data.CurrentXP or 0
 	local maxXP = data.MaxXP or 100
 	local level = data.Level or 1
 	
 	local model = GetLocalPinata()
 	if model then
-		local pos = model.PrimaryPart.Position
-		
-		PlayVFX("HitPinata", model.PrimaryPart.CFrame - Vector3.new(0, 3, 0))
-
-		local character = PLAYER.Character
-		if character then
-			local hand = character:FindFirstChild("RightHand") or character:FindFirstChild("Right Arm")
-			if hand then
-				PlayVFX("CandyDisappear", hand.CFrame)
-			end
-		end
-
-		CreateFloatingXP(pos, xpAdded)
 		UpdateXPBar(model, currentXP, maxXP, level)
+		
+		if xpAdded > 0 then
+			local pos = model.PrimaryPart and model.PrimaryPart.Position or model:GetPivot().Position
+			
+			local character = PLAYER.Character
+			if character then
+				local targetCFrame = nil
+				
+				local tool = character:FindFirstChildWhichIsA("Tool")
+				if tool then
+					local handle = tool.PrimaryPart or tool:FindFirstChild("Handle")
+					if handle then
+						targetCFrame = handle.CFrame
+					end
+				end
+				
+				if not targetCFrame then
+					local hand = character:FindFirstChild("RightHand") or character:FindFirstChild("Right Arm")
+					if hand then
+						targetCFrame = hand.CFrame
+					end
+				end
+				
+				if targetCFrame then
+					PlayVFX("CandyDisappear", targetCFrame)
+				end
+			end
+
+			CreateFloatingXP(pos, FormatNumber(xpAdded))
+		end
 	end
 end
 

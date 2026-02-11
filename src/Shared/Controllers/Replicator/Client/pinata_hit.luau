@@ -1,15 +1,27 @@
 local module = {}
 
--- // SERVICES
 local TweenService = game:GetService("TweenService")
 local Debris = game:GetService("Debris")
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
--- // CONSTANTS
+local Abbreviate = require(ReplicatedStorage.Modules.Math.Abbreviate)
+
 local TEXT_LIFETIME = 0.8
 local PLAYER = Players.LocalPlayer
+local VFX_FOLDER = ReplicatedStorage.Assets:WaitForChild("VFX")
 
--- // PRIVATE FUNCTIONS
+local function FormatNumber(num: number)
+	if type(Abbreviate) == "function" then
+		return Abbreviate(num)
+	elseif type(Abbreviate) == "table" and Abbreviate.Format then
+		return Abbreviate:Format(num)
+	elseif type(Abbreviate) == "table" and Abbreviate.abbreviate then
+		return Abbreviate.abbreviate(num)
+	end
+	return tostring(num)
+end
+
 local function GetLocalPinata()
 	local map = workspace:FindFirstChild("Map")
 	if not map then return nil end
@@ -56,7 +68,7 @@ local function CreateDamageText(position: Vector3, amount: number, isCrit: boole
 	textLabel.BackgroundTransparency = 1
 	textLabel.Size = UDim2.fromScale(1, 1)
 	textLabel.Font = Enum.Font.FredokaOne
-	textLabel.Text = amount
+	textLabel.Text = FormatNumber(amount)
 	textLabel.TextColor3 = isCrit and Color3.fromRGB(255, 80, 80) or Color3.fromRGB(255, 255, 255)
 	textLabel.TextStrokeTransparency = 0
 	textLabel.TextStrokeColor3 = Color3.new(0,0,0)
@@ -88,10 +100,10 @@ local function HighlightTarget(model: Model)
 
 	local highlight = Instance.new("Highlight")
 	highlight.Name = "HitHighlight"
-	highlight.FillColor = Color3.fromRGB(255, 255, 255)
-	highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+	highlight.FillColor = Color3.fromRGB(255, 50, 50)
+	highlight.OutlineColor = Color3.fromRGB(255, 0, 0)
 	highlight.FillTransparency = 0.2
-	highlight.OutlineTransparency = 0.5
+	highlight.OutlineTransparency = 0.2
 	highlight.Parent = model
 	
 	local tween = TweenService:Create(highlight, TweenInfo.new(0.25), { FillTransparency = 1, OutlineTransparency = 1 })
@@ -101,55 +113,54 @@ local function HighlightTarget(model: Model)
 	end)
 end
 
-local function BumpTarget(model: Model)
-	if model:GetAttribute("Tweening") then return end
-	model:SetAttribute("Tweening", true)
+local function PhysicalShake(model: Model)
+	local primary = model.PrimaryPart
+	if primary and primary:IsA("BasePart") then
+		local force = Vector3.new(
+			math.random(-15, 15),
+			math.random(10, 25),
+			math.random(-15, 15)
+		)
+		primary:ApplyImpulse(force * primary.AssemblyMass)
+	end
+end
 
-	local baseScale = model:GetAttribute("Scale") or 1
-	local targetScale = baseScale * 1.15
-	
-	model:ScaleTo(targetScale)
-	
-	task.delay(0.08, function()
-		if model and model.Parent then
-			model:ScaleTo(baseScale)
-			model:SetAttribute("Tweening", false)
+local function PlayVFX(vfxName: string, targetCFrame: CFrame)
+	local template = VFX_FOLDER:FindFirstChild(vfxName)
+	if not template then return end
+
+	local vfxPart = template:Clone()
+	vfxPart.CFrame = targetCFrame - Vector3.new(0, 3.5 , 0)
+	vfxPart.Anchored = true
+	vfxPart.CanCollide = false
+	vfxPart.Parent = workspace.Terrain
+
+	for _, child in vfxPart:GetDescendants() do
+		if child:IsA("ParticleEmitter") then
+			local count = child:GetAttribute("EmitCount") or 20 
+			child:Emit(count)
 		end
-	end)
+	end
+
+	Debris:AddItem(vfxPart, 2)
 end
 
-local function SpawnParticles(position: Vector3)
-	local attachment = Instance.new("Attachment")
-	attachment.WorldPosition = position
-	attachment.Parent = workspace.Terrain
-	
-	local emitter = Instance.new("ParticleEmitter")
-	emitter.Texture = "rbxassetid://14111878332"
-	emitter.Color = ColorSequence.new(Color3.fromRGB(255, 255, 200))
-	emitter.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.8), NumberSequenceKeypoint.new(1, 0)})
-	emitter.Lifetime = NumberRange.new(0.3, 0.5)
-	emitter.Speed = NumberRange.new(15, 25)
-	emitter.SpreadAngle = Vector2.new(360, 360)
-	emitter.Drag = 5
-	emitter.Parent = attachment
-	
-	emitter:Emit(8)
-	Debris:AddItem(attachment, 1)
-end
-
--- // MAIN FUNCTION
 function module:Start(data)
 	if not data or not data.Position then return end
 	
-	local position = data.Position
+	local posData = data.Position
+	local position = Vector3.new(posData.X, posData.Y, posData.Z)
 	local damage = data.Damage or 0
-	CreateDamageText(position, damage, damage > 10)
-	SpawnParticles(position)
+	
+	if damage > 0 then
+		CreateDamageText(position, damage, false)
+		PlayVFX("HitPinata", CFrame.new(position))
+	end
 	
 	local model = GetLocalPinata()
 	if model then
 		HighlightTarget(model)
-		--BumpTarget(model)
+		PhysicalShake(model)
 	end
 end
 
