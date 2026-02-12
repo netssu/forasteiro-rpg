@@ -1,35 +1,30 @@
 {
-  "name": "hit a pinataaa",
+  "name": "project",
   "tree": {
     "$className": "DataModel",
-    "ReplicatedStorage": {
+    "ReplicatedFirst": {
+      "$className": "ReplicatedFirst",
       "$ignoreUnknownInstances": true,
-      "$path": "src/Shared",
-        "Animations": {
-          "$className": "Folder",
-          "$ignoreUnknownInstances": true
-        },
-      "Assets": {
-        "$className": "Folder",
-        "$ignoreUnknownInstances": true
-      },
-      "Packages": {
-        "$path": "roblox_packages"
-      }
+      "$path": "src/ReplicatedFirst"
+    },
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "$ignoreUnknownInstances": true,
+      "$path": "src/ReplicatedStorage"
     },
     "ServerScriptService": {
+      "$className": "ServerScriptService",
       "$ignoreUnknownInstances": true,
-      "$path": "src/Server"
+      "$path": "src/ServerScriptService"
     },
     "StarterPlayer": {
-      "StarterPlayerScripts": {
+      "$className": "StarterPlayer",
+      "StarterCharacterScripts": {
+        "$className": "StarterCharacterScripts",
         "$ignoreUnknownInstances": true,
-        "$path": "src/Client"
-      }
-    },
-    "ServerScriptService": {
-      "$ignoreUnknownInstances": true,
-      "$path": "src/Server"
+        "$path": "src/StarterPlayer/StarterCharacterScripts"
+      },
+      "$ignoreUnknownInstances": true
     }
   }
 }
