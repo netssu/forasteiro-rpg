@@ -1914,13 +1914,31 @@ local function clear_plot_visuals(plot: Model)
 end
 
 local function find_slot()
-	for order, plotInstance in workspace.Map.Plots:GetChildren() do
-		if not plotInstance:IsA("Model") then
-			continue
+	local plots: { Model } = {}
+	for _, plotInstance in workspace.Map.Plots:GetChildren() do
+		if plotInstance:IsA("Model") then
+			table.insert(plots, plotInstance)
 		end
-		local plot: Model = plotInstance
-		local indexFromName = string.match(plot.Name, '%d+')
+	end
+
+	table.sort(plots, function(a: Model, b: Model): boolean
+		local aDigits = tonumber(string.match(a.Name, '%d+') or "")
+		local bDigits = tonumber(string.match(b.Name, '%d+') or "")
+		if aDigits and bDigits and aDigits ~= bDigits then
+			return aDigits < bDigits
+		end
+		if aDigits and not bDigits then
+			return true
+		end
+		if bDigits and not aDigits then
+			return false
+		end
+		return a.Name < b.Name
+	end)
+
+	for order: number, plot in ipairs(plots) do
 		local resolvedIndex = order
+		local indexFromName = string.match(plot.Name, '%d+')
 		if indexFromName then
 			local parsed = tonumber(indexFromName)
 			if parsed and parsed >= 1 then

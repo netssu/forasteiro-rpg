@@ -543,42 +543,9 @@ local function _DescribeChildren(Parent: Instance): string
 	return Output
 end
 
-local function _GetPlotIndex(Plot: Model): number?
-	local AttributeIndex: any = Plot:GetAttribute("PlotIndex")
-	if typeof(AttributeIndex) == "number" and AttributeIndex >= 1 then
-		return math.floor(AttributeIndex + 0.5)
-	end
-
-	local Digits: string? = string.match(Plot.Name, "%d+")
-	if Digits then
-		local Parsed: number? = tonumber(Digits)
-		if Parsed and Parsed >= 1 then
-			return math.floor(Parsed + 0.5)
-		end
-	end
-
-	return nil
-end
-
-local function _GetSlotRotation(Plot: Model, SlotConfig: any): number
-	local Rotation: number = if typeof(SlotConfig) == "table" and typeof(SlotConfig.RotationDefault) == "number"
-		then SlotConfig.RotationDefault
-		else 0
-	local UseByPlot: any = if typeof(SlotConfig) == "table" then SlotConfig.UseRotationByPlot else nil
-	local ByPlot: any = if typeof(SlotConfig) == "table" then SlotConfig.RotationByPlot else nil
-	if UseByPlot == true and typeof(ByPlot) == "table" then
-		local Index: number? = _GetPlotIndex(Plot)
-		if Index then
-			local Value: any = ByPlot[Index]
-			if typeof(Value) == "number" then
-				Rotation = Value
-			end
-		end
-	end
-	local Offset: number = if typeof(SlotConfig) == "table" and typeof(SlotConfig.ModelRotationOffset) == "number"
-		then SlotConfig.ModelRotationOffset
-		else 0
-	return Rotation + Offset
+local function _GetSlotRotation(_Plot: Model, _SlotConfig: any): number
+	-- Keep machine orientation locked to slot orientation (Long Slot / Wide Slot).
+	return 0
 end
 
 local function _IsPlotOwnedByLocalPlayer(Plot: Model): boolean
@@ -726,6 +693,8 @@ local function _HasPlotOwner(Plot: Model): boolean
 	local OwnerId: any = Plot:GetAttribute(OWNER_ATTRIBUTE_NAME)
 	return typeof(OwnerId) == "number" and OwnerId > 0
 end
+
+local _SetupPlotVisual: (Plot: Model) -> ()
 
 local function _WatchPlotOwner(Plot: Model): ()
 	if _PlotOwnerWatchers[Plot] then
@@ -3604,8 +3573,6 @@ local _MachineApi = {
 	DebugHover = DebugFlags.Hover,
 	CursorIcon = "rbxassetid://96499340217478",
 }
-
-local _SetupPlotVisual: (Plot: Model) -> ()
 
 local function _SetupGroupVisual(
 	Plot: Model,

@@ -42,5 +42,6 @@ return {
 	Metadata = {
 		LastLogin = 0,
 		TotalPlayTime = 0,
+		HasJoinedBefore = false,
 	},
 }

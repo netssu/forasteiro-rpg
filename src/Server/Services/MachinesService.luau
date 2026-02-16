@@ -135,8 +135,10 @@ local SCALE_EPSILON: number = 1e-3
 
 local DEBUG_ENABLED: boolean = false
 local DEBUG_SAVE: boolean = false
+local OFFLINE_EARNING_DEBUG: boolean = false
 local REMOVE_DEBOUNCE_TIME: number = 1.0
 local UPGRADE_DEBOUNCE_TIME: number = 0.08
+local OFFLINE_EARNING_CHARACTER_WAIT_STEP: number = 0.1
 
 --\\ STATE \\ -- TR
 local _PlayerPlots: { [Player]: Model } = {}
@@ -146,6 +148,7 @@ local _RemoveDebounce: { [string]: number } = {}
 local _UpgradeDebounce: { [string]: number } = {}
 local _AutoNextDropTime: { [string]: number } = {}
 local _AutoLoopActive: { [Model]: boolean } = {}
+local _OfflineRequestToken: { [Player]: number } = {}
 local _RandomGenerator: Random = Random.new()
 local _MemoriePlotsFolder: Folder? = nil
 local _MemorieMachinesFolders: { [Model]: Folder } = {}
@@ -176,6 +179,15 @@ local function _Debug(Message: string, ...: any): ()
 
 	local Output: string = string.format(Message, ...)
 	print("[Machines]", Output)
+end
+
+local function _OfflineLog(Message: string, ...: any): ()
+	if not OFFLINE_EARNING_DEBUG then
+		return
+	end
+
+	local Output: string = string.format(Message, ...)
+	print("[Machines][OfflineEarning]", Output)
 end
 
 local function _DebugSave(Label: string, Data: any): ()
@@ -757,7 +769,7 @@ local function _SetCandyWithState(
 	local MaxLevel: number? = _GetCandyMaxLevel(CandyModel)
 
 	local Progress: number = if typeof(Exp) == "number" and Exp >= 0 then Exp else 0
-	local ResolvedLevel: number = if typeof(Level) == "number" and Level >= 0 then Level else 1
+	local ResolvedLevel: number = if typeof(Level) == "number" and Level >= 1 then Level else 1
 	if MaxLevel and ResolvedLevel > MaxLevel then
 		ResolvedLevel = MaxLevel
 	end
@@ -1033,9 +1045,9 @@ local function _CompleteTimeProcess(SlotState: MachineSlotState, CandyState: Can
 		return
 	end
 
-	local CurrentProgress: number = _GetNumberAttribute(CandyState.Plot, CandyState.Keys.CandyProgress, DEFAULT_NUMBER)
-	if CurrentProgress > 0 then
-		_ApplyProgress(CandyState, SlotState, CurrentProgress, false)
+	local DropXp: number = _GetDropXp(SlotState)
+	if DropXp > 0 then
+		_ApplyProgress(CandyState, SlotState, DropXp, false)
 	end
 
 	_SetProcessState(CandyState.Plot, SlotState.GroupId, SlotState.SlotId, SlotState, PROCESS_STATE_READY, SlotState.ProcessStart, SlotState.ProcessEnd)
@@ -2007,7 +2019,7 @@ local function _EnsureDefaultCandy(SlotState: MachineSlotState): ()
 			local TapState: CandyState? = SlotState.Taps[Index]
 			if TapState and not _HasCandy(TapState) then
 				if SlotState.Config.Type == "Auto" then
-					_SetCandyWithState(TapState, CANDY_CONFIG.DefaultModel, 0, 0, {}, nil)
+					_SetCandyWithState(TapState, CANDY_CONFIG.DefaultModel, 1, 0, {}, nil)
 				else
 					_SetCandy(TapState, CANDY_CONFIG.DefaultModel)
 				end
@@ -2138,12 +2150,50 @@ local function _CaptureMachinesData(PlotState: PlotState): { [string]: any }
 	return Result
 end
 
+local function _ApplyOfflinePreview(PlotState: PlotState, OfflineSeconds: number, PlayerInstance: Player?): ()
+	if OfflineSeconds <= 0 then
+		return
+	end
+
+	local OfflineDelta: number = math.max(0, math.floor(OfflineSeconds))
+	if OfflineDelta <= 0 then
+		return
+	end
+
+	for _, GroupState: MachineGroupState in PlotState.Groups do
+		for _, SlotState: MachineSlotState in GroupState.Slots do
+			if _IsTimeProcessSlot(SlotState)
+				and _IsSlotOwned(PlayerInstance, GroupState.GroupId, SlotState.SlotId)
+				and SlotState.ProcessState == PROCESS_STATE_PROCESSING
+				and SlotState.ProcessEnd > 0
+			then
+				local NewStart: number = math.max(0, SlotState.ProcessStart + OfflineDelta)
+				local NewEnd: number = math.max(NewStart, SlotState.ProcessEnd + OfflineDelta)
+				_SetProcessState(
+					PlotState.Plot,
+					GroupState.GroupId,
+					SlotState.SlotId,
+					SlotState,
+					PROCESS_STATE_PROCESSING,
+					NewStart,
+					NewEnd
+				)
+			end
+		end
+	end
+end
+
 local function _ApplyOfflineProgress(PlotState: PlotState, OfflineSeconds: number, PlayerInstance: Player?): ()
 	if OfflineSeconds <= 0 then
 		return
 	end
 
-	local NowTime: number = os.time()
+	local OfflineDelta: number = math.max(0, math.floor(OfflineSeconds))
+	if OfflineDelta <= 0 then
+		return
+	end
+
+	local ApplyTime: number = os.time()
 
 	for _, GroupState: MachineGroupState in PlotState.Groups do
 		for _, SlotState: MachineSlotState in GroupState.Slots do
@@ -2151,11 +2201,28 @@ local function _ApplyOfflineProgress(PlotState: PlotState, OfflineSeconds: numbe
 				if _IsSlotOwned(PlayerInstance, GroupState.GroupId, SlotState.SlotId)
 					and SlotState.ProcessState == PROCESS_STATE_PROCESSING
 					and SlotState.ProcessEnd > 0
-					and NowTime >= SlotState.ProcessEnd
 				then
 					local CandyState: CandyState? = _GetCandyStateFromAction(SlotState, nil)
 					if CandyState then
-						_CompleteTimeProcess(SlotState, CandyState)
+						local RemainingNow: number = math.max(0, SlotState.ProcessEnd - ApplyTime)
+						local RemainingAfterOffline: number = RemainingNow - OfflineDelta
+						if RemainingAfterOffline <= 0 then
+							_CompleteTimeProcess(SlotState, CandyState)
+						else
+							local ProcessDuration: number = math.max(0, SlotState.ProcessEnd - SlotState.ProcessStart)
+							local ElapsedSeconds: number = math.max(0, ProcessDuration - RemainingNow)
+							local NewStart: number = math.max(0, ApplyTime - ElapsedSeconds)
+							local NewEnd: number = math.max(NewStart, ApplyTime + math.max(0, RemainingAfterOffline))
+							_SetProcessState(
+								PlotState.Plot,
+								GroupState.GroupId,
+								SlotState.SlotId,
+								SlotState,
+								PROCESS_STATE_PROCESSING,
+								NewStart,
+								NewEnd
+							)
+						end
 					end
 				end
 			end
@@ -2239,7 +2306,7 @@ local function _StartAutoLoop(PlotState: PlotState): ()
 										continue
 									end
 									if not _HasCandy(TapState) then
-										_SetCandyWithState(TapState, CANDY_CONFIG.DefaultModel, 0, 0, {}, nil)
+										_SetCandyWithState(TapState, CANDY_CONFIG.DefaultModel, 1, 0, {}, nil)
 										continue
 									end
 									local DebounceKey: string = TapState.Keys.DropSequence
@@ -2251,7 +2318,7 @@ local function _StartAutoLoop(PlotState: PlotState): ()
 								end
 							elseif SlotState.Candy then
 								if not _HasCandy(SlotState.Candy) then
-									_SetCandyWithState(SlotState.Candy, CANDY_CONFIG.DefaultModel, 0, 0, {}, nil)
+									_SetCandyWithState(SlotState.Candy, CANDY_CONFIG.DefaultModel, 1, 0, {}, nil)
 								else
 									local DebounceKey: string = SlotState.Candy.Keys.DropSequence
 									local NextTime: number = _AutoNextDropTime[DebounceKey] or 0
@@ -2541,12 +2608,12 @@ local function _HandleRemoveCandy(Player: Player, GroupId: string, SlotId: strin
 	if SlotState.Config.Type == "Auto" then
 		task.delay(0.05, function(): ()
 			if not _HasCandy(CandyState) then
-				_SetCandyWithState(CandyState, CANDY_CONFIG.DefaultModel, 0, 0, {}, nil)
+				_SetCandyWithState(CandyState, CANDY_CONFIG.DefaultModel, 1, 0, {}, nil)
 			end
 		end)
 		task.delay(0.6, function(): ()
 			if not _HasCandy(CandyState) then
-				_SetCandyWithState(CandyState, CANDY_CONFIG.DefaultModel, 0, 0, {}, nil)
+				_SetCandyWithState(CandyState, CANDY_CONFIG.DefaultModel, 1, 0, {}, nil)
 			end
 		end)
 	end
@@ -2714,7 +2781,113 @@ local function _SavePlayerMachines(Player: Player, PlotState: PlotState): ()
 	PlayerDataManager:Set(Player, { "Plot", "Machines" }, MachinesData)
 end
 
-local function _SetupPlot(Player: Player, Plot: Model): ()
+local function _WaitForPlayerCharacter(Player: Player): Model?
+	while Player.Parent do
+		local Character: Model? = Player.Character
+		if Character and Character.Parent then
+			return Character
+		end
+		task.wait(OFFLINE_EARNING_CHARACTER_WAIT_STEP)
+	end
+
+	return nil
+end
+
+local function _IsOfflineSequenceValid(Player: Player, PlotState: PlotState, Token: number): boolean
+	if Player.Parent == nil then
+		return false
+	end
+	if _OfflineRequestToken[Player] ~= Token then
+		return false
+	end
+	if _GetPlayerPlot(Player) ~= PlotState.Plot then
+		return false
+	end
+	return true
+end
+
+local function _FinalizeOfflineSequence(Player: Player, PlotState: PlotState, Token: number): ()
+	if not _IsOfflineSequenceValid(Player, PlotState, Token) then
+		_OfflineLog("finalize skipped (invalid) player=%s token=%d", Player.Name, Token)
+		return
+	end
+	_OfflineLog("finalize start autoloop player=%s token=%d", Player.Name, Token)
+	_StartAutoLoop(PlotState)
+end
+
+local function _RunOfflineEarningSequence(
+	Player: Player,
+	PlotState: PlotState,
+	OfflineSeconds: number,
+	Token: number
+): ()
+	if OfflineSeconds <= 0 then
+		_OfflineLog("skip no offline player=%s token=%d", Player.Name, Token)
+		_FinalizeOfflineSequence(Player, PlotState, Token)
+		return
+	end
+
+	task.spawn(function(): ()
+		if not _WaitForPlayerCharacter(Player) then
+			_OfflineLog("abort waiting character player=%s token=%d", Player.Name, Token)
+			return
+		end
+		if not _IsOfflineSequenceValid(Player, PlotState, Token) then
+			_OfflineLog("abort invalid sequence player=%s token=%d", Player.Name, Token)
+			return
+		end
+
+		local RequestSeconds: number = math.max(0, math.floor(OfflineSeconds))
+		_OfflineLog("invoke start player=%s seconds=%d token=%d", Player.Name, RequestSeconds, Token)
+		local Success: boolean, Result: any = pcall(function(): boolean
+			return Packets.OfflineEarning:FireClient(Player, RequestSeconds)
+		end)
+		_OfflineLog(
+			"invoke finish player=%s success=%s result=%s token=%d",
+			Player.Name,
+			tostring(Success),
+			tostring(Result),
+			Token
+		)
+		if not Success then
+			warn(string.format("[Machines][OfflineEarning] invoke failed for %s: %s", Player.Name, tostring(Result)))
+			_FinalizeOfflineSequence(Player, PlotState, Token)
+			return
+		end
+
+		if Result ~= true then
+			warn(string.format("[Machines][OfflineEarning] waiting true confirmation from %s, got %s", Player.Name, tostring(Result)))
+			return
+		end
+
+		if _IsOfflineSequenceValid(Player, PlotState, Token) then
+			_OfflineLog("apply offline player=%s seconds=%d token=%d", Player.Name, RequestSeconds, Token)
+			_ApplyOfflineProgress(PlotState, OfflineSeconds, Player)
+			_SavePlayerMachines(Player, PlotState)
+		else
+			_OfflineLog("skip apply invalid after invoke player=%s token=%d", Player.Name, Token)
+		end
+
+		_FinalizeOfflineSequence(Player, PlotState, Token)
+	end)
+end
+
+local function _SetupPlot(Player: Player, Plot: Model, Source: string?): ()
+	local ExistingToken: number? = _OfflineRequestToken[Player]
+	if ExistingToken and _PlayerPlots[Player] == Plot and _PlotStates[Plot] ~= nil then
+		_OfflineLog(
+			"setup skipped duplicate player=%s plot=%s token=%d source=%s",
+			Player.Name,
+			Plot.Name,
+			ExistingToken,
+			tostring(Source)
+		)
+		return
+	end
+
+	local Token: number = (_OfflineRequestToken[Player] or 0) + 1
+	_OfflineRequestToken[Player] = Token
+
 	local PlotState: PlotState = _PlotStates[Plot] or _CreatePlotState(Plot)
 	local SavedMachines: any = PlayerDataManager:Get(Player, { "Plot", "Machines" })
 	_DebugSave("Load:" .. Plot.Name, SavedMachines)
@@ -2722,16 +2895,36 @@ local function _SetupPlot(Player: Player, Plot: Model): ()
 	_DebugSave("AfterLoad:" .. Plot.Name, _CaptureMachinesData(PlotState))
 
 	local LastLogin: any = PlayerDataManager:Get(Player, { "Metadata", "LastLogin" })
+	local HasJoinedBeforeStored: boolean = PlayerDataManager:Get(Player, { "Metadata", "HasJoinedBefore" }) == true
+	local HasLegacyLogin: boolean = typeof(LastLogin) == "number" and LastLogin > 0
+	local HasJoinedBefore: boolean = HasJoinedBeforeStored or HasLegacyLogin
+	local LoginTime: number = os.time()
 	local OfflineSeconds: number = 0
-	if typeof(LastLogin) == "number" and LastLogin > 0 then
-		OfflineSeconds = math.max(0, os.time() - LastLogin)
+	if HasJoinedBefore and typeof(LastLogin) == "number" and LastLogin > 0 then
+		OfflineSeconds = math.max(0, LoginTime - LastLogin)
 	end
-	_ApplyOfflineProgress(PlotState, OfflineSeconds, Player)
+	_OfflineLog(
+		"setup player=%s plot=%s offlineSeconds=%d lastLogin=%s hasJoinedBefore=%s loginTime=%d token=%d source=%s",
+		Player.Name,
+		Plot.Name,
+		math.floor(OfflineSeconds),
+		tostring(LastLogin),
+		tostring(HasJoinedBefore),
+		LoginTime,
+		Token,
+		tostring(Source)
+	)
 
-	PlayerDataManager:Set(Player, { "Metadata", "LastLogin" }, os.time())
+	if not HasJoinedBeforeStored then
+		PlayerDataManager:Set(Player, { "Metadata", "HasJoinedBefore" }, true)
+	end
+	PlayerDataManager:Set(Player, { "Metadata", "LastLogin" }, LoginTime)
 	_SavePlayerMachines(Player, PlotState)
+	_ApplyOfflinePreview(PlotState, OfflineSeconds, Player)
+	_OfflineLog("preview prepared player=%s seconds=%d token=%d", Player.Name, math.floor(OfflineSeconds), Token)
 
 	_StartAutoLoop(PlotState)
+	_RunOfflineEarningSequence(Player, PlotState, OfflineSeconds, Token)
 end
 
 local function _ClearPlotState(PlotState: PlotState): ()
@@ -2763,7 +2956,7 @@ function module:Init(): ()
 		local PlayerInstance: Player = MetaPlayer.Instance
 		local Plot: Model = MetaPlayer.Cache.Plot
 		_PlayerPlots[PlayerInstance] = Plot
-		_SetupPlot(PlayerInstance, Plot)
+		_SetupPlot(PlayerInstance, Plot, "AssignPlot")
 	end)
 
 	PlotmeService.Signals.RemovePlot:Connect(function(MetaPlayer: { Instance: Player, Cache: { Plot: Model } }): ()
@@ -2776,6 +2969,7 @@ function module:Init(): ()
 			_ForceProfileSave(PlayerInstance, "RemovePlot")
 		end
 		_PlayerPlots[PlayerInstance] = nil
+		_OfflineRequestToken[PlayerInstance] = nil
 	end)
 
 	PlayerDataManager:OnPlayerLeaving(function(PlayerInstance: Player): ()
@@ -2790,6 +2984,7 @@ function module:Init(): ()
 		PlayerDataManager:Set(PlayerInstance, { "Metadata", "LastLogin" }, os.time())
 		_ForceProfileSave(PlayerInstance, "PlayerRemoving")
 		_PlayerPlots[PlayerInstance] = nil
+		_OfflineRequestToken[PlayerInstance] = nil
 	end)
 
 	Packets.Machines.OnServerEvent:Connect(function(PlayerInstance: Player, Action: string, Data: { [string]: any }): ()
@@ -2911,7 +3106,7 @@ function module:Init(): ()
 						local PlayerInstance: Player? = Players:GetPlayerByUserId(OwnerId)
 						if PlayerInstance then
 							_PlayerPlots[PlayerInstance] = Plot
-							_SetupPlot(PlayerInstance, Plot)
+							_SetupPlot(PlayerInstance, Plot, "WarmScan")
 						end
 					end
 				end

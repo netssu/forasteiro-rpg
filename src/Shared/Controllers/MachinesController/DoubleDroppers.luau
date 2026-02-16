@@ -6,6 +6,7 @@ local PROCESS_STATE_IDLE = "Idle"
 local PROCESS_STATE_PROCESSING = "Processing"
 local PROCESS_STATE_READY = "Ready"
 local DEBUG_STARTMODEL = true
+local UI_CLICK_DEBOUNCE_SECONDS = 0.1
 
 local function _DebugStart(Api: any, Message: string, ...: any): ()
 	if not DEBUG_STARTMODEL then
@@ -119,6 +120,7 @@ function module.SetupSlot(Api: any, DropperData: any, ParentContainer: Instance)
 	local GroupId: string = DropperData.GroupId
 	local SlotId: string = DropperData.SlotId
 	local SlotConfig: any = DropperData.Config
+	local IsLocalOwner: boolean = DropperData.IsLocalOwner == true
 
 	local TapModel: Model? = Api.FindDescendant(DropperData.Model, Api.TapName) :: Model?
 	local CanPosition: BasePart? = nil
@@ -294,7 +296,7 @@ function module.SetupSlot(Api: any, DropperData: any, ParentContainer: Instance)
 				StartButton.Visible = false
 			end
 			if ClaimButton then
-				ClaimButton.Visible = true
+				ClaimButton.Visible = IsLocalOwner
 			end
 		else
 			if TimeLabel then
@@ -305,7 +307,7 @@ function module.SetupSlot(Api: any, DropperData: any, ParentContainer: Instance)
 				ReadyLabel.Visible = false
 			end
 			if StartButton then
-				StartButton.Visible = true
+				StartButton.Visible = IsLocalOwner
 			end
 			if ClaimButton then
 				ClaimButton.Visible = false
@@ -328,65 +330,100 @@ function module.SetupSlot(Api: any, DropperData: any, ParentContainer: Instance)
 		end)
 	end
 
+	local LastStartClickAt: number = 0
+	local LastClaimClickAt: number = 0
+
+	local function PlayMachineClickAnim(): ()
+		if Api.PlayDropperClickScale then
+			Api.PlayDropperClickScale(DropperData, DropperData.BaseScale * Api.ClickShrinkScale)
+		end
+	end
+
+	local function TryStart(Source: string): ()
+		if not IsLocalOwner then
+			return
+		end
+		local Now: number = os.clock()
+		if Now - LastStartClickAt < UI_CLICK_DEBOUNCE_SECONDS then
+			return
+		end
+		local State: string = _GetProcessState(Api, Plot, GroupId, SlotId)
+		_DebugStart(Api, "Start %s state=%s", Source, State)
+		if State ~= PROCESS_STATE_IDLE then
+			return
+		end
+		LastStartClickAt = Now
+		PlayMachineClickAnim()
+		Api.Packets.Machines:Fire(Api.Actions.DoubleDropperStart, {
+			GroupId = GroupId,
+			SlotId = SlotId,
+		})
+	end
+
+	local function TryClaim(Source: string): ()
+		if not IsLocalOwner then
+			return
+		end
+		local Now: number = os.clock()
+		if Now - LastClaimClickAt < UI_CLICK_DEBOUNCE_SECONDS then
+			return
+		end
+		local State: string = _GetProcessState(Api, Plot, GroupId, SlotId)
+		_DebugStart(Api, "Claim %s state=%s", Source, State)
+		if State ~= PROCESS_STATE_READY then
+			return
+		end
+		LastClaimClickAt = Now
+		PlayMachineClickAnim()
+		Api.Packets.Machines:Fire(Api.ActionRemove, {
+			GroupId = GroupId,
+			SlotId = SlotId,
+		})
+	end
+
 	if StartButton then
+		StartButton.Active = IsLocalOwner
+		StartButton.AutoButtonColor = IsLocalOwner
 		StartButton.MouseEnter:Connect(function(): ()
+			if not IsLocalOwner then
+				return
+			end
 			Api.SetDropperHover(DropperData, true)
 		end)
 		StartButton.MouseLeave:Connect(function(): ()
+			if not IsLocalOwner then
+				return
+			end
 			Api.SetDropperHover(DropperData, false)
 		end)
 		StartButton.Activated:Connect(function(): ()
-			local State: string = _GetProcessState(Api, Plot, GroupId, SlotId)
-			_DebugStart(Api, "Start Activated state=%s", State)
-			if State ~= PROCESS_STATE_IDLE then
-				return
-			end
-			Api.Packets.Machines:Fire(Api.Actions.DoubleDropperStart, {
-				GroupId = GroupId,
-				SlotId = SlotId,
-			})
+			TryStart("Activated")
 		end)
 		StartButton.MouseButton1Click:Connect(function(): ()
-			local State: string = _GetProcessState(Api, Plot, GroupId, SlotId)
-			_DebugStart(Api, "Start Click state=%s", State)
-			if State ~= PROCESS_STATE_IDLE then
-				return
-			end
-			Api.Packets.Machines:Fire(Api.Actions.DoubleDropperStart, {
-				GroupId = GroupId,
-				SlotId = SlotId,
-			})
+			TryStart("Click")
 		end)
 	end
 
 	if ClaimButton then
+		ClaimButton.Active = IsLocalOwner
+		ClaimButton.AutoButtonColor = IsLocalOwner
 		ClaimButton.MouseEnter:Connect(function(): ()
+			if not IsLocalOwner then
+				return
+			end
 			Api.SetDropperHover(DropperData, true)
 		end)
 		ClaimButton.MouseLeave:Connect(function(): ()
+			if not IsLocalOwner then
+				return
+			end
 			Api.SetDropperHover(DropperData, false)
 		end)
 		ClaimButton.Activated:Connect(function(): ()
-			local State: string = _GetProcessState(Api, Plot, GroupId, SlotId)
-			_DebugStart(Api, "Claim Activated state=%s", State)
-			if State ~= PROCESS_STATE_READY then
-				return
-			end
-			Api.Packets.Machines:Fire(Api.ActionRemove, {
-				GroupId = GroupId,
-				SlotId = SlotId,
-			})
+			TryClaim("Activated")
 		end)
 		ClaimButton.MouseButton1Click:Connect(function(): ()
-			local State: string = _GetProcessState(Api, Plot, GroupId, SlotId)
-			_DebugStart(Api, "Claim Click state=%s", State)
-			if State ~= PROCESS_STATE_READY then
-				return
-			end
-			Api.Packets.Machines:Fire(Api.ActionRemove, {
-				GroupId = GroupId,
-				SlotId = SlotId,
-			})
+			TryClaim("Click")
 		end)
 	end
 

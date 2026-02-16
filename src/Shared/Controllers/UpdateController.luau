@@ -18,12 +18,10 @@ local template = scrollingFrame:WaitForChild("Template")
 -- FUNCTIONS
 local function applyStyle(titleLabel, phraseLabel, info)
 	if titleLabel then
-		titleLabel.TextColor3 = info.TitleColor
 		titleLabel.TextSize = info.TitleSize
 	end
 	
 	if phraseLabel then
-		phraseLabel.TextColor3 = info.PhraseColor
 		phraseLabel.TextSize = info.PhraseSize
 	end
 end

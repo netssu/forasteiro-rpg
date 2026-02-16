@@ -3,11 +3,9 @@ local UpdateData = {}
 -- VARIABLES
 UpdateData.List = {
 	{
-		Title = "Update 1.2 - The Beginning",
-		Phrase = "We added the inventory system.",
-		TitleColor = Color3.fromRGB(255, 0, 0),
+		Title = "Update 1.2",
+		Phrase = "- Test version",
 		TitleSize = 25,
-		PhraseColor = Color3.fromRGB(0, 0, 0),
 		PhraseSize = 18
 	},
 

@@ -15,10 +15,12 @@ local UPDATE_INTERVAL: number = 0.5
 local CACHE_FOLDER_NAME: string = "_ClientPlotCache"
 local CACHE_ID_ATTRIBUTE: string = "ClientCacheId"
 local HIDDEN_ATTRIBUTE: string = "ClientHidden"
+local OWNER_ATTRIBUTE_NAME: string = "Owner"
 
 -- // Variables
 local PLAYER: Player = Players.LocalPlayer
 local _MachineFolders: { string } = {}
+local _LastOwnerByPlot: { [Model]: any } = {}
 
 -- // Private Functions
 local function EnsureCacheFolder(): Folder
@@ -141,11 +143,35 @@ local function CollectPlots(PlotsFolder: Instance): { Model }
 	return Results
 end
 
-local function HidePlotMachines(Plot: Model, CachePlotFolder: Folder, MachineFolders: { string }): ()
+local function IsMachineFolderName(MachineFolders: { string }, Name: string): boolean
 	for _, FolderName: string in ipairs(MachineFolders) do
-		local FolderInstance: Instance? = Plot:FindFirstChild(FolderName)
-		if FolderInstance then
-			FolderInstance.Parent = CachePlotFolder
+		if FolderName == Name then
+			return true
+		end
+	end
+
+	return false
+end
+
+local function ClearFolderChildren(Folder: Folder): ()
+	for _, Child: Instance in Folder:GetChildren() do
+		Child:Destroy()
+	end
+end
+
+local function GetPlotOwnerId(Plot: Model): any
+	local OwnerId: any = Plot:GetAttribute(OWNER_ATTRIBUTE_NAME)
+	if typeof(OwnerId) == "number" then
+		return OwnerId
+	end
+
+	return nil
+end
+
+local function HidePlotMachines(Plot: Model, CachePlotFolder: Folder, MachineFolders: { string }): ()
+	for _, Child: Instance in Plot:GetChildren() do
+		if IsMachineFolderName(MachineFolders, Child.Name) then
+			Child.Parent = CachePlotFolder
 		end
 	end
 
@@ -153,14 +179,41 @@ local function HidePlotMachines(Plot: Model, CachePlotFolder: Folder, MachineFol
 end
 
 local function ShowPlotMachines(Plot: Model, CachePlotFolder: Folder, MachineFolders: { string }): ()
-	for _, FolderName: string in ipairs(MachineFolders) do
-		local FolderInstance: Instance? = CachePlotFolder:FindFirstChild(FolderName)
-		if FolderInstance then
-			FolderInstance.Parent = Plot
+	for _, Child: Instance in CachePlotFolder:GetChildren() do
+		if IsMachineFolderName(MachineFolders, Child.Name) then
+			local Existing: Instance? = Plot:FindFirstChild(Child.Name)
+			if Existing and Existing ~= Child then
+				Child:Destroy()
+			else
+				Child.Parent = Plot
+			end
 		end
 	end
 
 	Plot:SetAttribute(HIDDEN_ATTRIBUTE, false)
+end
+
+local function ReconcilePlotOwners(Candidates: { Model }, CacheFolder: Folder, MachineFolders: { string }): ()
+	for _, Plot: Model in ipairs(Candidates) do
+		local OwnerId: any = GetPlotOwnerId(Plot)
+		local PreviousOwnerId: any = _LastOwnerByPlot[Plot]
+		if PreviousOwnerId ~= OwnerId then
+			_LastOwnerByPlot[Plot] = OwnerId
+
+			local CachePlotFolder: Folder = EnsurePlotCacheFolder(CacheFolder, Plot)
+			ClearFolderChildren(CachePlotFolder)
+
+			if Plot:GetAttribute(HIDDEN_ATTRIBUTE) == true then
+				HidePlotMachines(Plot, CachePlotFolder, MachineFolders)
+			end
+		end
+	end
+
+	for Plot: Model, _ in _LastOwnerByPlot do
+		if not Plot.Parent then
+			_LastOwnerByPlot[Plot] = nil
+		end
+	end
 end
 
 local function UpdatePlots(PlotsFolder: Instance, CacheFolder: Folder, Position: Vector3): ()
@@ -168,6 +221,7 @@ local function UpdatePlots(PlotsFolder: Instance, CacheFolder: Folder, Position:
 	local UnloadDistanceSq: number = UNLOAD_DISTANCE * UNLOAD_DISTANCE
 	local Candidates: { Model } = CollectPlots(PlotsFolder)
 	local MachineFolders: { string } = EnsureMachineFolders()
+	ReconcilePlotOwners(Candidates, CacheFolder, MachineFolders)
 
 	local HasAnyReady: boolean = false
 	local ClosestPlot: Model? = nil
@@ -218,6 +272,9 @@ local function UpdatePlots(PlotsFolder: Instance, CacheFolder: Folder, Position:
 			if DistSq <= LoadDistanceSq then
 				local CachePlotFolder: Folder = EnsurePlotCacheFolder(CacheFolder, Plot)
 				ShowPlotMachines(Plot, CachePlotFolder, MachineFolders)
+			else
+				local CachePlotFolder: Folder = EnsurePlotCacheFolder(CacheFolder, Plot)
+				HidePlotMachines(Plot, CachePlotFolder, MachineFolders)
 			end
 		else
 			if DistSq >= UnloadDistanceSq then
@@ -242,9 +299,13 @@ function module:Start()
 		end
 
 		while true do
+			if not PlotsFolder or not PlotsFolder.Parent then
+				PlotsFolder = GetPlotsFolder()
+			end
+
 			local Root: BasePart? = GetRoot()
-			if Root then
-				UpdatePlots(PlotsFolder :: Instance, CacheFolder, Root.Position)
+			if Root and PlotsFolder then
+				UpdatePlots(PlotsFolder, CacheFolder, Root.Position)
 			end
 			task.wait(UPDATE_INTERVAL)
 		end
