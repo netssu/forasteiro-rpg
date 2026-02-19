@@ -20,12 +20,17 @@ scoreboard players set Temp manhunt_end 10
 gamemode survival @a
 
 time set 0
+gamerule locatorBar false
+gamerule locator_bar false
 
 effect give @a minecraft:saturation 100 1
 clear @a
 
-execute as @a[team=hunters,limit=1] at @s run spreadplayers ~ ~ 700 700 true @a[team=runners]
-execute unless entity @a[team=hunters] run spreadplayers ~ ~ 700 700 true @a[team=runners]
+execute store result storage manhunt:config spawn_distance int 1 run scoreboard players get Temp manhunt_spawn_distance
+execute store result storage manhunt:config start_mode int 1 run scoreboard players get Temp manhunt_start_mode
+function manhunt:apply_start_mode with storage manhunt:config
 
-scoreboard players set Starts: manhunt_display 180
+scoreboard players operation Starts: manhunt_display = Temp manhunt_compass_delay
 scoreboard objectives setdisplay sidebar manhunt_display
+
+function manhunt:show_menu

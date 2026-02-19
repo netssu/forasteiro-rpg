@@ -28,8 +28,13 @@ scoreboard objectives add manhunt_z_n dummy
 
 scoreboard objectives add manhunt_dst dummy
 scoreboard objectives add manhunt_min_dst dummy
+scoreboard objectives add manhunt_joined dummy
 
 execute unless score Temp manhunt_lead matches -2147483647.. run scoreboard players set Temp manhunt_lead 45
+execute unless score Temp manhunt_compass_delay matches -2147483647.. run scoreboard players set Temp manhunt_compass_delay 180
+execute unless score Temp manhunt_spawn_distance matches -2147483647.. run scoreboard players set Temp manhunt_spawn_distance 400
+execute unless score Temp manhunt_alert_distance matches -2147483647.. run scoreboard players set Temp manhunt_alert_distance 100
+execute unless score Temp manhunt_start_mode matches -2147483647.. run scoreboard players set Temp manhunt_start_mode 1
 
 team add hunters "hunters"
 team add runners "runners"
@@ -40,5 +45,8 @@ scoreboard objectives add manhunt_prev dummy
 execute unless score Temp manhunt_prev matches -2147483647.. run function manhunt:first_load
 
 scoreboard objectives setdisplay list manhunt_tab_hp
+gamerule locatorBar false
+gamerule locator_bar false
 
 tellraw @a {"text":"Manhunt (1.17.x, 1.18.x, 1.19.x, 1.20.x, 1.21.x)-13 Loaded","bold":true,"color":"gold"}
+function manhunt:show_menu
