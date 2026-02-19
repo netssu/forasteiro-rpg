@@ -1,3 +1,4 @@
+scoreboard objectives add manhunt_action trigger
 tag @s add manhunt_seen
 
 team leave @s

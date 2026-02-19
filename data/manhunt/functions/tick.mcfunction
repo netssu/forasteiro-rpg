@@ -1,3 +1,4 @@
+scoreboard objectives add manhunt_action trigger
 execute as @a[tag=!manhunt_seen] run function manhunt:player_join
 
 scoreboard players enable @a manhunt_action
