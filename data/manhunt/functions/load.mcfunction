@@ -29,8 +29,6 @@ scoreboard objectives add manhunt_dst dummy
 scoreboard objectives add manhunt_min_dst dummy
 scoreboard objectives add manhunt_hhp dummy
 
-scoreboard objectives add manhunt_action trigger
-
 execute unless score Temp manhunt_lead matches -2147483647.. run scoreboard players set Temp manhunt_lead 45
 execute unless score Temp manhunt_compass_delay matches -2147483647.. run scoreboard players set Temp manhunt_compass_delay 180
 execute unless score Temp manhunt_start_dist matches -2147483647.. run scoreboard players set Temp manhunt_start_dist 400
@@ -48,5 +46,4 @@ scoreboard objectives add manhunt_prev dummy
 execute unless score Temp manhunt_prev matches -2147483647.. run function manhunt:first_load
 
 gamerule locatorBar false
-tellraw @a {"text":"Manhunt Loaded (1.21.11)","bold":true,"color":"gold"}
-execute as @a run function manhunt:give_menu_book
+tellraw @a {"text":"Manhunt Loaded (1.21.11). Use /function manhunt:help","bold":true,"color":"gold"}

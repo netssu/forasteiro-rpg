@@ -33,4 +33,4 @@ execute as @a[team=hunters,limit=1] at @s run setworldspawn ~ ~ ~
 
 execute if score Temp manhunt_start_mode matches 1..2 run function manhunt:start_hunt
 
-tellraw @a [{"text":"[Manhunt] ","color":"gold","bold":true},{"text":"[Encerrar game]","color":"red","bold":true,"click_event":{"action":"run_command","command":"trigger manhunt_action set 99"}}]
+tellraw @a {"text":"Partida iniciada. Para encerrar: /function manhunt:stop","color":"gold"}

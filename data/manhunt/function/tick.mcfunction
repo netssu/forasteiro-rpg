@@ -1,8 +1,4 @@
-scoreboard objectives add manhunt_action trigger
 execute as @a[tag=!manhunt_seen] run function manhunt:player_join
-
-scoreboard players enable @a manhunt_action
-execute as @a[scores={manhunt_action=1..}] run function manhunt:menu_action
 
 execute if score Temp manhunt_enabled matches 1.. as @a[scores={manhunt_deaths=1..},team=runners] run function manhunt:runners_death
 execute if score Temp manhunt_enabled matches 1.. as @a[scores={manhunt_deaths=1..},team=hunters] at @s run function manhunt:hunter_death
