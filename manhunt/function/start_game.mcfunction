@@ -21,6 +21,7 @@ gamemode survival @a
 
 time set 0
 gamerule locatorBar false
+gamerule locator_bar false
 
 effect give @a minecraft:saturation 100 1
 clear @a
