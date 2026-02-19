@@ -3,5 +3,3 @@ scoreboard players set @a manhunt_deaths 0
 
 scoreboard players add Temp manhunt_ticks 1
 execute if score Temp manhunt_ticks matches 20.. run function manhunt:second
-
-execute if score Starts: manhunt_display matches 1.. run clear @a[team=hunters]

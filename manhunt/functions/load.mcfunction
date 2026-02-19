@@ -9,6 +9,7 @@ scoreboard objectives add manhunt_end dummy
 
 scoreboard objectives add manhunt_display dummy
 scoreboard objectives modify manhunt_display displayname ""
+scoreboard objectives add manhunt_tab_hp dummy
 
 scoreboard objectives add manhunt_deaths deathCount
 scoreboard objectives add manhunt_lead dummy
@@ -32,8 +33,12 @@ execute unless score Temp manhunt_lead matches -2147483647.. run scoreboard play
 
 team add hunters "hunters"
 team add runners "runners"
+team modify hunters nametagVisibility hideForOtherTeams
+team modify runners nametagVisibility hideForOtherTeams
 
 scoreboard objectives add manhunt_prev dummy
 execute unless score Temp manhunt_prev matches -2147483647.. run function manhunt:first_load
+
+scoreboard objectives setdisplay list manhunt_tab_hp
 
 tellraw @a {"text":"Manhunt (1.17.x, 1.18.x, 1.19.x, 1.20.x, 1.21.x)-13 Loaded","bold":true,"color":"gold"}
