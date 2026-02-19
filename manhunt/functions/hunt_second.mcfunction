@@ -30,8 +30,7 @@ execute as @a[team=hunters] store result score @s manhunt_tab_hp run data get en
 scoreboard players reset @a[team=runners] manhunt_tab_hp
 
 #Alert when a hunter enters configured radius of any runner
-execute store result storage manhunt:config alert_distance int 1 run scoreboard players get Temp manhunt_alert_distance
-function manhunt:proximity_check with storage manhunt:config
+function manhunt:proximity_check
 
 function manhunt:grab_position
 
