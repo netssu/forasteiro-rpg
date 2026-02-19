@@ -29,6 +29,8 @@ execute as @a[team=runners,limit=1] at @s if score Temp manhunt_start_mode match
 execute if entity @a[team=runners] as @a[team=runners,limit=1] at @s if score Temp manhunt_start_mode matches 2 run spreadplayers ~ ~ 0 80 false @a[team=runners]
 execute if entity @a[team=runners] as @a[team=runners,limit=1] at @s if score Temp manhunt_start_mode matches 2 run function manhunt:spread_hunters
 
+execute as @a[team=hunters,limit=1] at @s run setworldspawn ~ ~ ~
+
 execute if score Temp manhunt_start_mode matches 1..2 run function manhunt:start_hunt
 
 tellraw @a [{"text":"[Manhunt] ","color":"gold","bold":true},{"text":"[Encerrar game]","color":"red","bold":true,"click_event":{"action":"run_command","command":"trigger manhunt_action set 99"}}]
