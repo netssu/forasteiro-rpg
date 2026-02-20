@@ -1,5 +1,0 @@
-execute if score Temp manhunt_start_dist matches ..249 run spreadplayers ~ ~ 200 250 false @a[team=hunters]
-execute if score Temp manhunt_start_dist matches 250..349 run spreadplayers ~ ~ 300 350 false @a[team=hunters]
-execute if score Temp manhunt_start_dist matches 350..449 run spreadplayers ~ ~ 400 450 false @a[team=hunters]
-execute if score Temp manhunt_start_dist matches 450..549 run spreadplayers ~ ~ 500 550 false @a[team=hunters]
-execute if score Temp manhunt_start_dist matches 550.. run spreadplayers ~ ~ 600 650 false @a[team=hunters]
