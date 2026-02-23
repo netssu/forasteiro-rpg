@@ -5,7 +5,7 @@ execute if score Starts: manhunt_display matches 1.. run scoreboard players remo
 execute if score Starts: manhunt_display matches 1.. run clear @a[team=hunters] minecraft:compass
 
 #Game over detection (runners)
-execute unless entity @e[team=runners,tag=!manhunt_died] run function manhunt:decide_winners
+execute unless entity @a[team=runners,tag=!manhunt_died,tag=!manhunt_respawn_wait,gamemode=!spectator] run function manhunt:decide_winners
 
 #Game over detection (hunters)
 execute unless entity @a[team=hunters] run function manhunt:decide_winners
@@ -32,3 +32,19 @@ function manhunt:grab_position
 
 execute as @a[team=hunters] at @s if predicate manhunt:in_overworld run function manhunt:update_compass_overworld
 execute as @a[team=hunters] at @s if predicate manhunt:in_nether run function manhunt:update_compass_nether
+
+
+#Runner respawn timer and glowing
+execute as @a[team=runners,tag=manhunt_respawn_wait,scores={manhunt_runner_respawn=1..}] run title @s actionbar [{"text":"Respawn em ","color":"yellow"},{"score":{"name":"@s","objective":"manhunt_runner_respawn"},"color":"gold"},{"text":"s","color":"yellow"}]
+scoreboard players remove @a[team=runners,tag=manhunt_respawn_wait,scores={manhunt_runner_respawn=1..}] manhunt_runner_respawn 1
+
+execute as @a[team=runners,tag=manhunt_respawn_wait,scores={manhunt_runner_respawn=..0}] if entity @a[team=runners,tag=!manhunt_died,tag=!manhunt_respawn_wait,gamemode=!spectator,limit=1] at @a[team=runners,tag=!manhunt_died,tag=!manhunt_respawn_wait,gamemode=!spectator,sort=random,limit=1] run tp @s ~ ~ ~
+execute as @a[team=runners,tag=manhunt_respawn_wait,scores={manhunt_runner_respawn=..0}] if entity @a[team=runners,tag=!manhunt_died,tag=!manhunt_respawn_wait,gamemode=!spectator,limit=1] run gamemode survival @s
+execute as @a[team=runners,tag=manhunt_respawn_wait,scores={manhunt_runner_respawn=..0}] if entity @a[team=runners,tag=!manhunt_died,tag=!manhunt_respawn_wait,gamemode=!spectator,limit=1] run tag @s remove manhunt_respawn_wait
+execute as @a[team=runners,tag=manhunt_respawn_wait,scores={manhunt_runner_respawn=..0}] if entity @a[team=runners,tag=!manhunt_died,tag=!manhunt_respawn_wait,gamemode=!spectator,limit=1] run scoreboard players set @s manhunt_runner_glow 60
+execute as @a[team=runners,tag=manhunt_respawn_wait,scores={manhunt_runner_respawn=..0}] if entity @a[team=runners,tag=!manhunt_died,tag=!manhunt_respawn_wait,gamemode=!spectator,limit=1] run effect give @s minecraft:glowing 60 0 true
+execute as @a[team=runners,tag=manhunt_respawn_wait,scores={manhunt_runner_respawn=..0}] unless entity @a[team=runners,tag=!manhunt_died,tag=!manhunt_respawn_wait,gamemode=!spectator,limit=1] run tag @s add manhunt_died
+execute as @a[team=runners,tag=manhunt_respawn_wait,scores={manhunt_runner_respawn=..0}] unless entity @a[team=runners,tag=!manhunt_died,tag=!manhunt_respawn_wait,gamemode=!spectator,limit=1] run tag @s remove manhunt_respawn_wait
+
+execute as @a[team=runners,scores={manhunt_runner_glow=1..}] run effect give @s minecraft:glowing 2 0 true
+scoreboard players remove @a[team=runners,scores={manhunt_runner_glow=1..}] manhunt_runner_glow 1
