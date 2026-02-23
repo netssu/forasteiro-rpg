@@ -1,3 +1,1 @@
-tag @s add manhunt_died 
-
-gamemode spectator @s
+scoreboard players set @s manhunt_hunter_protect 100
