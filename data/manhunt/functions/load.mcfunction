@@ -13,7 +13,6 @@ scoreboard objectives add manhunt_tab_hp dummy
 
 scoreboard objectives add manhunt_deaths deathCount
 scoreboard objectives add manhunt_lead dummy
-scoreboard objectives add manhunt_respawn_s dummy
 
 scoreboard objectives add manhunt_x dummy
 scoreboard objectives add manhunt_y dummy
