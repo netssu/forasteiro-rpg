@@ -29,6 +29,7 @@ clear @a
 
 execute as @a[team=runners,limit=1] at @s run spreadplayers ~ ~ 800 800 true @a[team=hunters]
 execute unless entity @a[team=runners] run spreadplayers ~ ~ 800 800 true @a[team=hunters]
+execute as @a[team=hunters,limit=1,sort=random] at @s run setworldspawn ~ ~ ~
 
 scoreboard players set Starts: manhunt_display 180
 scoreboard objectives setdisplay sidebar manhunt_display
