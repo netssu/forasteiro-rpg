@@ -52,7 +52,7 @@ local cachedSnapshot = {
 	RainEnabled = false,
 	CombatStarted = false,
 	ActiveTurnIndex = 0,
-	Players = {},
+	Characters = {},
 	Order = {},
 }
 
@@ -83,7 +83,7 @@ local function clone_order_from_snapshot(): ()
 
 	for _, orderData in cachedSnapshot.Order do
 		table.insert(localOrder, {
-			UserId = orderData.UserId,
+			Character = orderData.Character,
 			Label = orderData.Label,
 			RoleName = orderData.RoleName,
 			IsActive = orderData.IsActive,
@@ -91,19 +91,19 @@ local function clone_order_from_snapshot(): ()
 	end
 end
 
-local function get_order_user_ids(): {number}
-	local orderUserIds = {}
+local function get_order_characters(): {Model}
+	local orderChars = {}
 
 	for _, orderData in localOrder do
-		table.insert(orderUserIds, orderData.UserId)
+		table.insert(orderChars, orderData.Character)
 	end
 
-	return orderUserIds
+	return orderChars
 end
 
 local function sync_order_to_server(): ()
 	fire_tabletop("SetCombatOrder", {
-		OrderUserIds = get_order_user_ids(),
+		OrderCharacters = get_order_characters(),
 	})
 end
 
@@ -271,14 +271,12 @@ local function sanitize_number(value: string): number?
 	return numberValue
 end
 
-local function get_player_image_id(userId: number): string
-	local targetPlayer = Players:GetPlayerByUserId(userId)
-
-	if not targetPlayer then
+local function get_character_image_id(character: Model): string
+	if not character then
 		return ""
 	end
 
-	local value = targetPlayer:GetAttribute(ROLE_IMAGE_ATTRIBUTE_NAME)
+	local value = character:GetAttribute(ROLE_IMAGE_ATTRIBUTE_NAME)
 
 	if typeof(value) ~= "string" then
 		return ""
@@ -294,7 +292,7 @@ local function render_players_list(): ()
 
 	clear_players_children()
 
-	for _, playerData in cachedSnapshot.Players do
+	for _, charData in cachedSnapshot.Characters do
 		local row = Instance.new("Frame")
 		row.Size = UDim2.new(1, -8, 0, 118)
 		row.BackgroundColor3 = Color3.fromRGB(26, 28, 34)
@@ -309,7 +307,7 @@ local function render_players_list(): ()
 		nameLabel.Position = UDim2.fromOffset(10, 6)
 		nameLabel.Size = UDim2.new(1, -20, 0, 18)
 		nameLabel.Font = Enum.Font.GothamBold
-		nameLabel.Text = playerData.Label .. " [" .. (playerData.RoleName ~= "" and playerData.RoleName or "Menu") .. "]"
+		nameLabel.Text = charData.Label .. " [" .. (charData.RoleName ~= "" and charData.RoleName or "NPC") .. "]"
 		nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 		nameLabel.TextSize = 13
 		nameLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -320,8 +318,8 @@ local function render_players_list(): ()
 		stateLabel.Position = UDim2.fromOffset(10, 26)
 		stateLabel.Size = UDim2.new(1, -20, 0, 16)
 		stateLabel.Font = Enum.Font.GothamMedium
-		stateLabel.Text = playerData.MovementLocked and "Movimento: Travado" or "Movimento: Livre"
-		stateLabel.TextColor3 = playerData.MovementLocked and Color3.fromRGB(255, 170, 170) or Color3.fromRGB(170, 255, 170)
+		stateLabel.Text = charData.MovementLocked and "Movimento: Travado" or "Movimento: Livre"
+		stateLabel.TextColor3 = charData.MovementLocked and Color3.fromRGB(255, 170, 170) or Color3.fromRGB(170, 255, 170)
 		stateLabel.TextSize = 12
 		stateLabel.TextXAlignment = Enum.TextXAlignment.Left
 		stateLabel.Parent = row
@@ -336,7 +334,7 @@ local function render_players_list(): ()
 		hpLabel.TextSize = 12
 		hpLabel.Parent = row
 
-		local currentBox = create_text_box(row, tostring(math.floor(playerData.CurrentHealth + 0.5)), UDim2.fromOffset(56, 24), UDim2.fromOffset(40, 48))
+		local currentBox = create_text_box(row, tostring(math.floor(charData.CurrentHealth + 0.5)), UDim2.fromOffset(56, 24), UDim2.fromOffset(40, 48))
 
 		local slashLabel = Instance.new("TextLabel")
 		slashLabel.BackgroundTransparency = 1
@@ -348,9 +346,9 @@ local function render_players_list(): ()
 		slashLabel.TextSize = 12
 		slashLabel.Parent = row
 
-		local maxBox = create_text_box(row, tostring(math.floor(playerData.MaxHealth + 0.5)), UDim2.fromOffset(56, 24), UDim2.fromOffset(118, 48))
+		local maxBox = create_text_box(row, tostring(math.floor(charData.MaxHealth + 0.5)), UDim2.fromOffset(56, 24), UDim2.fromOffset(118, 48))
 		local applyButton = create_text_button(row, "Aplicar", UDim2.fromOffset(70, 24), UDim2.fromOffset(182, 48))
-		local lockButton = create_text_button(row, playerData.ManualMovementLocked and "Desbloq." or "Bloquear", UDim2.fromOffset(84, 24), UDim2.fromOffset(262, 48))
+		local lockButton = create_text_button(row, charData.ManualMovementLocked and "Desbloq." or "Bloquear", UDim2.fromOffset(84, 24), UDim2.fromOffset(262, 48))
 		local addTurnButton = create_text_button(row, "Add Turno", UDim2.fromOffset(88, 24), UDim2.fromOffset(354, 48))
 
 		local imageLabel = Instance.new("TextLabel")
@@ -363,7 +361,7 @@ local function render_players_list(): ()
 		imageLabel.TextSize = 12
 		imageLabel.Parent = row
 
-		local imageIdBox = create_text_box(row, get_player_image_id(playerData.UserId), UDim2.fromOffset(240, 24), UDim2.fromOffset(52, 82))
+		local imageIdBox = create_text_box(row, get_character_image_id(charData.Character), UDim2.fromOffset(240, 24), UDim2.fromOffset(52, 82))
 		local applyImageButton = create_text_button(row, "Setar", UDim2.fromOffset(70, 24), UDim2.fromOffset(300, 82))
 
 		applyButton.MouseButton1Click:Connect(function()
@@ -374,35 +372,29 @@ local function render_players_list(): ()
 				return
 			end
 
-			fire_tabletop("SetPlayerHealth", {
-				UserId = playerData.UserId,
+			fire_tabletop("SetCharacterHealth", {
+				Character = charData.Character,
 				CurrentHealth = currentHealth,
 				MaxHealth = maxHealth,
 			})
 		end)
 
-		if playerData.RoleName == "Jogador" then
-			lockButton.MouseButton1Click:Connect(function()
-				fire_tabletop("SetMovementLock", {
-					UserId = playerData.UserId,
-					Enabled = not playerData.ManualMovementLocked,
-				})
-			end)
-		else
-			lockButton.Text = "Sem Lock"
-			lockButton.AutoButtonColor = false
-			lockButton.BackgroundColor3 = Color3.fromRGB(44, 44, 44)
-		end
+		lockButton.MouseButton1Click:Connect(function()
+			fire_tabletop("SetMovementLock", {
+				Character = charData.Character,
+				Enabled = not charData.ManualMovementLocked,
+			})
+		end)
 
 		addTurnButton.MouseButton1Click:Connect(function()
 			fire_tabletop("AddOrderEntry", {
-				UserId = playerData.UserId,
+				Character = charData.Character,
 			})
 		end)
 
 		applyImageButton.MouseButton1Click:Connect(function()
 			roleImageEvent:FireServer({
-				UserId = playerData.UserId,
+				Character = charData.Character,
 				ImageId = imageIdBox.Text,
 			})
 		end)

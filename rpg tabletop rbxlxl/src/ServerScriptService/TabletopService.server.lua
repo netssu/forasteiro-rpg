@@ -3,6 +3,7 @@ local Players: Players = game:GetService("Players")
 local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Lighting: Lighting = game:GetService("Lighting")
 local SoundService: SoundService = game:GetService("SoundService")
+local Workspace: Workspace = game:GetService("Workspace")
 
 ------------------//CONSTANTS
 local MASTER_TEAM_NAME: string = "Mestre"
@@ -13,12 +14,20 @@ local DEFAULT_PRESET_NAME: string = "NeutralDay"
 local AUDIO_FOLDER_NAME: string = "TabletopAudio"
 local RAIN_SOUND_NAME: string = "RainAmbient"
 local MANAGED_ATTRIBUTE_NAME: string = "TabletopManaged"
+local CHARACTERS_FOLDER_NAME: string = "Characters"
 
 ------------------//VARIABLES
 local assetsFolder: Folder = ReplicatedStorage:WaitForChild("Assets")
 local remotesFolder: Folder = assetsFolder:WaitForChild("Remotes")
 local lightingPresetsFolder: Folder = assetsFolder:WaitForChild("LightingPresets")
 local tabletopEvent: RemoteEvent = remotesFolder:WaitForChild(REMOTE_NAME)
+
+local charactersFolder = Workspace:FindFirstChild(CHARACTERS_FOLDER_NAME)
+if not charactersFolder then
+	charactersFolder = Instance.new("Folder")
+	charactersFolder.Name = CHARACTERS_FOLDER_NAME
+	charactersFolder.Parent = Workspace
+end
 
 local state = {
 	clockTime = 12,
@@ -49,16 +58,6 @@ local function is_master(player: Player): boolean
 	return get_team_name(player) == MASTER_TEAM_NAME
 end
 
-local function get_player_by_user_id(userId: number): Player?
-	for _, player in Players:GetPlayers() do
-		if player.UserId == userId then
-			return player
-		end
-	end
-
-	return nil
-end
-
 local function get_player_label(player: Player): string
 	if player.DisplayName ~= player.Name then
 		return player.DisplayName .. " (@" .. player.Name .. ")"
@@ -67,9 +66,7 @@ local function get_player_label(player: Player): string
 	return player.Name
 end
 
-local function get_humanoid(player: Player): Humanoid?
-	local character = player.Character
-
+local function get_humanoid(character: Model): Humanoid?
 	if not character then
 		return nil
 	end
@@ -83,14 +80,14 @@ local function get_humanoid(player: Player): Humanoid?
 	return nil
 end
 
-local function ensure_health_entry(player: Player): {}
-	local entry = state.healthData[player.UserId]
+local function ensure_health_entry(character: Model): {}
+	local entry = state.healthData[character]
 
 	if entry then
 		return entry
 	end
 
-	local humanoid = get_humanoid(player)
+	local humanoid = get_humanoid(character)
 	local maxHealth = 100
 	local currentHealth = 100
 
@@ -104,75 +101,75 @@ local function ensure_health_entry(player: Player): {}
 		Current = currentHealth,
 	}
 
-	state.healthData[player.UserId] = entry
+	state.healthData[character] = entry
 
 	return entry
 end
 
-local function capture_health_from_character(player: Player): ()
-	local humanoid = get_humanoid(player)
+local function capture_health_from_character(character: Model): ()
+	local humanoid = get_humanoid(character)
 
 	if not humanoid then
 		return
 	end
 
-	local entry = ensure_health_entry(player)
+	local entry = ensure_health_entry(character)
 
 	entry.Max = math.max(1, humanoid.MaxHealth)
 	entry.Current = math.clamp(humanoid.Health, 0, entry.Max)
 end
 
-local function apply_health_to_character(player: Player): ()
-	local humanoid = get_humanoid(player)
+local function apply_health_to_character(character: Model): ()
+	local humanoid = get_humanoid(character)
 
 	if not humanoid then
 		return
 	end
 
-	local entry = ensure_health_entry(player)
+	local entry = ensure_health_entry(character)
 
 	humanoid.MaxHealth = math.max(1, entry.Max)
 	humanoid.Health = math.clamp(entry.Current, 0, humanoid.MaxHealth)
 end
 
-local function disconnect_health_connections(userId: number): ()
-	local healthConnection = healthChangedConnections[userId]
+local function disconnect_health_connections(character: Model): ()
+	local healthConnection = healthChangedConnections[character]
 
 	if healthConnection then
 		healthConnection:Disconnect()
-		healthChangedConnections[userId] = nil
+		healthChangedConnections[character] = nil
 	end
 
-	local maxHealthConnection = maxHealthChangedConnections[userId]
+	local maxHealthConnection = maxHealthChangedConnections[character]
 
 	if maxHealthConnection then
 		maxHealthConnection:Disconnect()
-		maxHealthChangedConnections[userId] = nil
+		maxHealthChangedConnections[character] = nil
 	end
 end
 
-local function connect_character_health(player: Player): ()
-	local humanoid = get_humanoid(player)
+local function connect_character_health(character: Model): ()
+	local humanoid = get_humanoid(character)
 
-	disconnect_health_connections(player.UserId)
+	disconnect_health_connections(character)
 
 	if not humanoid then
 		return
 	end
 
-	if state.healthData[player.UserId] then
-		apply_health_to_character(player)
+	if state.healthData[character] then
+		apply_health_to_character(character)
 	else
-		capture_health_from_character(player)
+		capture_health_from_character(character)
 	end
 
-	healthChangedConnections[player.UserId] = humanoid.HealthChanged:Connect(function()
-		capture_health_from_character(player)
+	healthChangedConnections[character] = humanoid.HealthChanged:Connect(function()
+		capture_health_from_character(character)
 		push_snapshot()
 	end)
 
-	maxHealthChangedConnections[player.UserId] = humanoid:GetPropertyChangedSignal("MaxHealth"):Connect(function()
-		capture_health_from_character(player)
+	maxHealthChangedConnections[character] = humanoid:GetPropertyChangedSignal("MaxHealth"):Connect(function()
+		capture_health_from_character(character)
 		push_snapshot()
 	end)
 end
@@ -319,16 +316,18 @@ local function set_rain_enabled(isEnabled: boolean): ()
 end
 
 local function cleanup_combat_order(): ()
-	local connectedPlayers = {}
+	local connectedCharacters = {}
 
-	for _, player in Players:GetPlayers() do
-		connectedPlayers[player.UserId] = true
+	for _, child in charactersFolder:GetChildren() do
+		if child:IsA("Model") then
+			connectedCharacters[child] = true
+		end
 	end
 
 	local newOrder = {}
 
 	for _, entry in state.combatOrder do
-		if connectedPlayers[entry.UserId] then
+		if connectedCharacters[entry.Character] then
 			table.insert(newOrder, entry)
 		end
 	end
@@ -367,60 +366,69 @@ local function refresh_turn_and_lock_state(): ()
 
 	local activeEntry = get_active_order_entry()
 
-	for _, player in Players:GetPlayers() do
-		local isTurnActive = activeEntry and activeEntry.UserId == player.UserId or false
-		local movementLocked = false
+	for _, character in charactersFolder:GetChildren() do
+		if not character:IsA("Model") then continue end
 
-		if get_team_name(player) == PLAYER_TEAM_NAME then
-			movementLocked = state.manualLocks[player.UserId] == true
+		local isTurnActive = activeEntry and activeEntry.Character == character or false
+		local movementLocked = state.manualLocks[character] == true
 
-			if state.combatStarted then
-				movementLocked = movementLocked or not isTurnActive
-			end
+		if state.combatStarted then
+			movementLocked = movementLocked or not isTurnActive
 		end
 
-		player:SetAttribute("IsTurnActive", isTurnActive)
-		player:SetAttribute("MovementLocked", movementLocked)
+		character:SetAttribute("IsTurnActive", isTurnActive)
+		character:SetAttribute("MovementLocked", movementLocked)
+
+		local rootPart = character:FindFirstChild("HumanoidRootPart")
+
+		if rootPart and rootPart:IsA("BasePart") then
+			rootPart.Anchored = movementLocked
+		end
 	end
 end
 
-local function serialize_players(): {any}
-	local playersData = {}
+local function serialize_characters(): {any}
+	local charactersData = {}
 
-	for _, player in Players:GetPlayers() do
-		local entry = ensure_health_entry(player)
+	for _, character in charactersFolder:GetChildren() do
+		if not character:IsA("Model") then continue end
 
-		table.insert(playersData, {
-			UserId = player.UserId,
-			Name = player.Name,
-			Label = get_player_label(player),
-			RoleName = get_team_name(player),
-			ManualMovementLocked = state.manualLocks[player.UserId] == true,
-			MovementLocked = player:GetAttribute("MovementLocked") == true,
-			IsTurnActive = player:GetAttribute("IsTurnActive") == true,
+		local player = Players:GetPlayerFromCharacter(character)
+		local label = player and get_player_label(player) or character.Name
+		local roleName = player and get_team_name(player) or "NPC"
+		local entry = ensure_health_entry(character)
+
+		table.insert(charactersData, {
+			Character = character,
+			Label = label,
+			RoleName = roleName,
+			ManualMovementLocked = state.manualLocks[character] == true,
+			MovementLocked = character:GetAttribute("MovementLocked") == true,
+			IsTurnActive = character:GetAttribute("IsTurnActive") == true,
 			CurrentHealth = entry.Current,
 			MaxHealth = entry.Max,
 		})
 	end
 
-	table.sort(playersData, function(a, b)
+	table.sort(charactersData, function(a, b)
 		return a.Label < b.Label
 	end)
 
-	return playersData
+	return charactersData
 end
 
 local function serialize_order(): {any}
 	local orderData = {}
 
 	for index, entry in state.combatOrder do
-		local player = get_player_by_user_id(entry.UserId)
-		local label = player and get_player_label(player) or ("UserId " .. tostring(entry.UserId))
-		local roleName = player and get_team_name(player) or ""
+		local character = entry.Character
+		local player = character and Players:GetPlayerFromCharacter(character)
+		local label = player and get_player_label(player) or (character and character.Name or "Desconhecido")
+		local roleName = player and get_team_name(player) or "NPC"
 
 		table.insert(orderData, {
 			Index = index,
-			UserId = entry.UserId,
+			Character = character,
 			Label = label,
 			RoleName = roleName,
 			IsActive = state.combatStarted and state.activeTurnIndex == index,
@@ -441,8 +449,8 @@ local function build_snapshot(): {}
 			RainEnabled = state.rainEnabled,
 			CombatStarted = state.combatStarted,
 			ActiveTurnIndex = state.activeTurnIndex,
-			ActiveTurnUserId = activeEntry and activeEntry.UserId or 0,
-			Players = serialize_players(),
+			ActiveTurnCharacter = activeEntry and activeEntry.Character or nil,
+			Characters = serialize_characters(),
 			Order = serialize_order(),
 		},
 	}
@@ -461,15 +469,13 @@ function push_snapshot(targetPlayer: Player?): ()
 	end
 end
 
-local function add_order_entry(userId: number): ()
-	local targetPlayer = get_player_by_user_id(userId)
-
-	if not targetPlayer then
+local function add_order_entry(character: Model): ()
+	if not character or not character.Parent then
 		return
 	end
 
 	table.insert(state.combatOrder, {
-		UserId = userId,
+		Character = character,
 	})
 end
 
@@ -491,20 +497,16 @@ local function remove_order_entry(index: number): ()
 	end
 end
 
-local function set_combat_order(orderUserIds: {any}): ()
+local function set_combat_order(orderCharacters: {any}): ()
 	local newOrder = {}
 
-	for index = 1, #orderUserIds do
-		local userId = orderUserIds[index]
+	for index = 1, #orderCharacters do
+		local character = orderCharacters[index]
 
-		if typeof(userId) == "number" then
-			local targetPlayer = get_player_by_user_id(userId)
-
-			if targetPlayer then
-				table.insert(newOrder, {
-					UserId = userId,
-				})
-			end
+		if typeof(character) == "Instance" and character:IsA("Model") then
+			table.insert(newOrder, {
+				Character = character,
+			})
 		end
 	end
 
@@ -562,19 +564,17 @@ local function advance_turn(): ()
 	end
 end
 
-local function set_player_health(userId: number, currentHealth: number, maxHealth: number): ()
-	local targetPlayer = get_player_by_user_id(userId)
-
-	if not targetPlayer then
+local function set_character_health(character: Model, currentHealth: number, maxHealth: number): ()
+	if not character then
 		return
 	end
 
-	local entry = ensure_health_entry(targetPlayer)
+	local entry = ensure_health_entry(character)
 
 	entry.Max = math.max(1, maxHealth)
 	entry.Current = math.clamp(currentHealth, 0, entry.Max)
 
-	apply_health_to_character(targetPlayer)
+	apply_health_to_character(character)
 end
 
 local function on_tabletop_request(player: Player, payload: any): ()
@@ -599,14 +599,14 @@ local function on_tabletop_request(player: Player, payload: any): ()
 		apply_preset(payload.PresetName)
 	elseif action == "SetRain" and typeof(payload.Enabled) == "boolean" then
 		set_rain_enabled(payload.Enabled)
-	elseif action == "SetMovementLock" and typeof(payload.UserId) == "number" and typeof(payload.Enabled) == "boolean" then
-		state.manualLocks[payload.UserId] = payload.Enabled
-	elseif action == "AddOrderEntry" and typeof(payload.UserId) == "number" then
-		add_order_entry(payload.UserId)
+	elseif action == "SetMovementLock" and typeof(payload.Character) == "Instance" and typeof(payload.Enabled) == "boolean" then
+		state.manualLocks[payload.Character] = payload.Enabled
+	elseif action == "AddOrderEntry" and typeof(payload.Character) == "Instance" then
+		add_order_entry(payload.Character)
 	elseif action == "RemoveOrderEntry" and typeof(payload.Index) == "number" then
 		remove_order_entry(payload.Index)
-	elseif action == "SetCombatOrder" and typeof(payload.OrderUserIds) == "table" then
-		set_combat_order(payload.OrderUserIds)
+	elseif action == "SetCombatOrder" and typeof(payload.OrderCharacters) == "table" then
+		set_combat_order(payload.OrderCharacters)
 	elseif action == "ClearCombatOrder" then
 		clear_combat_order()
 	elseif action == "StartCombat" then
@@ -615,11 +615,11 @@ local function on_tabletop_request(player: Player, payload: any): ()
 		stop_combat()
 	elseif action == "NextTurn" then
 		advance_turn()
-	elseif action == "SetPlayerHealth"
-		and typeof(payload.UserId) == "number"
+	elseif action == "SetCharacterHealth"
+		and typeof(payload.Character) == "Instance"
 		and typeof(payload.CurrentHealth) == "number"
 		and typeof(payload.MaxHealth) == "number" then
-		set_player_health(payload.UserId, payload.CurrentHealth, payload.MaxHealth)
+		set_character_health(payload.Character, payload.CurrentHealth, payload.MaxHealth)
 	else
 		return
 	end
@@ -628,58 +628,72 @@ local function on_tabletop_request(player: Player, payload: any): ()
 	push_snapshot()
 end
 
-local function on_player_added(player: Player): ()
-	if player:GetAttribute("MovementLocked") == nil then
-		player:SetAttribute("MovementLocked", false)
+local function setup_character(character: Model): ()
+	if character:GetAttribute("MovementLocked") == nil then
+		character:SetAttribute("MovementLocked", false)
 	end
 
-	if player:GetAttribute("IsTurnActive") == nil then
-		player:SetAttribute("IsTurnActive", false)
+	if character:GetAttribute("IsTurnActive") == nil then
+		character:SetAttribute("IsTurnActive", false)
 	end
 
-	ensure_health_entry(player)
+	ensure_health_entry(character)
+	connect_character_health(character)
+end
 
-	player:GetPropertyChangedSignal("Team"):Connect(function()
-		refresh_turn_and_lock_state()
-		push_snapshot()
-	end)
-
-	player.CharacterAdded:Connect(function()
+local function on_character_added(child: Instance): ()
+	if child:IsA("Model") then
 		task.defer(function()
-			connect_character_health(player)
+			setup_character(child)
 			refresh_turn_and_lock_state()
 			push_snapshot()
 		end)
-	end)
-
-	task.defer(function()
-		connect_character_health(player)
-		push_snapshot(player)
-	end)
+	end
 end
 
-local function on_player_removing(player: Player): ()
-	state.manualLocks[player.UserId] = nil
-	state.healthData[player.UserId] = nil
+local function on_character_removing(child: Instance): ()
+	if child:IsA("Model") then
+		state.manualLocks[child] = nil
+		state.healthData[child] = nil
 
-	disconnect_health_connections(player.UserId)
+		disconnect_health_connections(child)
+		cleanup_combat_order()
+		refresh_turn_and_lock_state()
+		push_snapshot()
+	end
+end
 
-	cleanup_combat_order()
-	refresh_turn_and_lock_state()
-	push_snapshot()
+local function on_player_added(player: Player): ()
+	player.CharacterAdded:Connect(function(character: Model)
+		task.defer(function()
+			character.Parent = charactersFolder
+		end)
+	end)
 end
 
 ------------------//MAIN FUNCTIONS
 tabletopEvent.OnServerEvent:Connect(on_tabletop_request)
 
-------------------//INIT
-apply_preset(DEFAULT_PRESET_NAME)
-set_rain_enabled(false)
-refresh_turn_and_lock_state()
+charactersFolder.ChildAdded:Connect(on_character_added)
+charactersFolder.ChildRemoved:Connect(on_character_removing)
 
 for _, player in Players:GetPlayers() do
 	on_player_added(player)
+	if player.Character then
+		task.defer(function()
+			player.Character.Parent = charactersFolder
+		end)
+	end
 end
 
 Players.PlayerAdded:Connect(on_player_added)
-Players.PlayerRemoving:Connect(on_player_removing)
+
+------------------//INIT
+apply_preset(DEFAULT_PRESET_NAME)
+set_rain_enabled(false)
+
+for _, child in charactersFolder:GetChildren() do
+	on_character_added(child)
+end
+
+refresh_turn_and_lock_state()

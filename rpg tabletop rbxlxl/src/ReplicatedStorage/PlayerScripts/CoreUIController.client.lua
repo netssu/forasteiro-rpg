@@ -19,35 +19,38 @@ local player: Player = Players.LocalPlayer
 
 ------------------//FUNCTIONS
 local function set_core_value(coreName: string, value: any): ()
-	for _ = 1, RETRY_COUNT do
-		local success = pcall(function()
-			StarterGui:SetCore(coreName, value)
-		end)
+	task.spawn(function()
+		for _ = 1, RETRY_COUNT do
+			local success = pcall(function()
+				StarterGui:SetCore(coreName, value)
+			end)
 
-		if success then
-			return
+			if success then
+				return
+			end
+
+			task.wait(RETRY_DELAY)
 		end
-
-		task.wait(RETRY_DELAY)
-	end
+	end)
 end
 
 local function set_core_gui_enabled(coreGuiType: Enum.CoreGuiType, isEnabled: boolean): ()
-	for _ = 1, RETRY_COUNT do
-		local success = pcall(function()
-			StarterGui:SetCoreGuiEnabled(coreGuiType, isEnabled)
-		end)
+	task.spawn(function()
+		for _ = 1, RETRY_COUNT do
+			local success = pcall(function()
+				StarterGui:SetCoreGuiEnabled(coreGuiType, isEnabled)
+			end)
 
-		if success then
-			return
+			if success then
+				return
+			end
+
+			task.wait(RETRY_DELAY)
 		end
-
-		task.wait(RETRY_DELAY)
-	end
+	end)
 end
 
 local function apply_core_ui_state(): ()
-	set_core_value("TopbarEnabled", false)
 	set_core_value("ResetButtonCallback", false)
 
 	for _, coreGuiType in CORE_GUI_TYPES do

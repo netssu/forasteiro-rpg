@@ -1,6 +1,7 @@
 ------------------//SERVICES
 local Players: Players = game:GetService("Players")
 local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace: Workspace = game:GetService("Workspace")
 
 ------------------//CONSTANTS
 local MASTER_TEAM_NAME: string = "Mestre"
@@ -9,6 +10,7 @@ local PLAYER_TEAM_NAME: string = "Jogador"
 local ASSETS_FOLDER_NAME: string = "Assets"
 local REMOTES_FOLDER_NAME: string = "Remotes"
 local ROLE_IMAGE_REMOTE_NAME: string = "RoleImageEvent"
+local CHARACTERS_FOLDER_NAME: string = "Characters"
 
 local MASTER_SANITIZE_PASSES: number = 6
 local MASTER_SANITIZE_INTERVAL: number = 0.2
@@ -29,8 +31,10 @@ local TOKEN_MIN_WIDTH: number = 3
 local TOKEN_WIDTH_RATIO: number = 0.72
 local TOKEN_MIN_HEIGHT: number = 5
 
+local DEFAULT_ROLE_IMAGE_ID: string = "rbxassetid://102504382273976"
+
 ------------------//VARIABLES
-local sanitizeVersionByPlayer: {[Player]: number} = {}
+local sanitizeVersionByCharacter: {[Model]: number} = {}
 
 local assetsFolder: Folder = ReplicatedStorage:FindFirstChild(ASSETS_FOLDER_NAME) or Instance.new("Folder")
 assetsFolder.Name = ASSETS_FOLDER_NAME
@@ -47,38 +51,38 @@ if not roleImageEvent then
 	roleImageEvent.Parent = remotesFolder
 end
 
+local charactersFolder = Workspace:FindFirstChild(CHARACTERS_FOLDER_NAME)
+if not charactersFolder then
+	charactersFolder = Instance.new("Folder")
+	charactersFolder.Name = CHARACTERS_FOLDER_NAME
+	charactersFolder.Parent = Workspace
+end
+
 ------------------//FUNCTIONS
-local function get_team_name(player: Player): string
-	local team = player.Team
-
-	if not team then
-		return ""
+local function get_character_role(character: Model): string
+	local player = Players:GetPlayerFromCharacter(character)
+	if player and player.Team then
+		return player.Team.Name
 	end
-
-	return team.Name
+	return PLAYER_TEAM_NAME
 end
 
-local function is_master(player: Player): boolean
-	return get_team_name(player) == MASTER_TEAM_NAME
+local function is_master(character: Model): boolean
+	return get_character_role(character) == MASTER_TEAM_NAME
 end
 
-local function is_player_role(player: Player): boolean
-	return get_team_name(player) == PLAYER_TEAM_NAME
+local function is_player_role(character: Model): boolean
+	return get_character_role(character) == PLAYER_TEAM_NAME
 end
 
-local function get_player_scripts(player: Player): Instance?
-	return player:FindFirstChild("PlayerScripts")
-end
+local function set_rbx_character_sounds_enabled(character: Model, isEnabled: boolean): ()
+	local player = Players:GetPlayerFromCharacter(character)
+	if not player then return end
 
-local function set_rbx_character_sounds_enabled(player: Player, isEnabled: boolean): ()
-	local playerScripts = get_player_scripts(player)
-
-	if not playerScripts then
-		return
-	end
+	local playerScripts = player:FindFirstChild("PlayerScripts")
+	if not playerScripts then return end
 
 	local soundScript = playerScripts:FindFirstChild("RbxCharacterSounds", true)
-
 	if soundScript and soundScript:IsA("LocalScript") then
 		soundScript.Enabled = isEnabled
 	end
@@ -150,8 +154,8 @@ local function normalize_image_id(rawValue: string): string
 	return trimmed
 end
 
-local function get_player_image_asset(player: Player): string
-	local rawValue = player:GetAttribute(ROLE_IMAGE_ATTRIBUTE_NAME)
+local function get_character_image_asset(character: Model): string
+	local rawValue = character:GetAttribute(ROLE_IMAGE_ATTRIBUTE_NAME)
 
 	if typeof(rawValue) ~= "string" then
 		return ""
@@ -172,7 +176,7 @@ local function get_token_size(character: Model): Vector3
 	return Vector3.new(width, height, TOKEN_THICKNESS)
 end
 
-local function create_surface_image(parent: SurfaceGui, imageName: string, imageAsset: string): ()
+local function create_surface_image(parent: SurfaceGui, imageName: string, imageAsset: string, imageColor: Color3?): ()
 	local imageLabel = Instance.new("ImageLabel")
 	imageLabel.Name = imageName
 	imageLabel.Size = UDim2.fromScale(1, 1)
@@ -181,10 +185,15 @@ local function create_surface_image(parent: SurfaceGui, imageName: string, image
 	imageLabel.BorderSizePixel = 0
 	imageLabel.ScaleType = Enum.ScaleType.Fit
 	imageLabel.Image = imageAsset
+
+	if imageColor then
+		imageLabel.ImageColor3 = imageColor
+	end
+
 	imageLabel.Parent = parent
 end
 
-local function create_surface_gui(tokenPart: BasePart, guiName: string, imageName: string, face: Enum.NormalId, imageAsset: string, imageColor: Color3): SurfaceGui
+local function create_surface_gui(tokenPart: BasePart, guiName: string, imageName: string, face: Enum.NormalId, imageAsset: string): SurfaceGui
 	local surfaceGui = Instance.new("SurfaceGui")
 	surfaceGui.Name = guiName
 	surfaceGui.Face = face
@@ -195,16 +204,18 @@ local function create_surface_gui(tokenPart: BasePart, guiName: string, imageNam
 	surfaceGui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
 	surfaceGui.PixelsPerStud = 50
 	surfaceGui.Parent = tokenPart
-	
+
+	local imageColor = nil
 	local isBack = guiName == ROLE_TOKEN_BACK_GUI_NAME
 	if isBack then
-		imageColor = Color3.new(0.0666667, 0.0666667, 0.0666667)
+		imageColor = Color3.new(0.207843, 0.207843, 0.207843)
 	end
 
 	create_surface_image(surfaceGui, imageName, imageAsset, imageColor)
 
 	return surfaceGui
 end
+
 local function update_token_images(tokenPart: BasePart, imageAsset: string): ()
 	local frontGui = tokenPart:FindFirstChild(ROLE_TOKEN_FRONT_GUI_NAME)
 	local backGui = tokenPart:FindFirstChild(ROLE_TOKEN_BACK_GUI_NAME)
@@ -224,13 +235,13 @@ local function update_token_images(tokenPart: BasePart, imageAsset: string): ()
 	end
 end
 
-local function create_or_update_player_token(player: Player, character: Model): ()
+local function create_or_update_player_token(character: Model): ()
 	local rootPart = character:FindFirstChild("HumanoidRootPart")
 	if not rootPart or not rootPart:IsA("BasePart") then
 		return
 	end
 
-	local imageAsset = get_player_image_asset(player)
+	local imageAsset = get_character_image_asset(character)
 	local tokenPart = character:FindFirstChild(ROLE_TOKEN_PART_NAME)
 
 	if tokenPart and not tokenPart:IsA("BasePart") then
@@ -290,9 +301,16 @@ local function apply_master_part_state(character: Model): ()
 end
 
 local function apply_player_part_state(character: Model): ()
+	local isLocked = character:GetAttribute("MovementLocked") == true
+
 	for _, descendant in character:GetDescendants() do
 		if descendant:IsA("BasePart") then
-			descendant.Anchored = false
+			if descendant.Name == "HumanoidRootPart" then
+				descendant.Anchored = isLocked
+			else
+				descendant.Anchored = false
+			end
+
 			descendant.CanCollide = false
 			descendant.CanTouch = false
 			descendant.CanQuery = false
@@ -326,48 +344,43 @@ local function apply_player_humanoid_state(character: Model): ()
 
 	humanoid.AutoRotate = true
 	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+	humanoid.WalkSpeed = 16
+	humanoid.JumpPower = 50
+	humanoid.JumpHeight = 7.2
 end
 
-local function sanitize_master_character(player: Player, character: Model): ()
+local function sanitize_master_character(character: Model): ()
 	remove_existing_token(character)
 	destroy_master_visual_objects(character)
 	destroy_character_sounds(character)
 	apply_master_part_state(character)
 	apply_master_humanoid_state(character)
-	set_rbx_character_sounds_enabled(player, false)
+	set_rbx_character_sounds_enabled(character, false)
 end
 
-local function sanitize_player_character(player: Player, character: Model): ()
+local function sanitize_player_character(character: Model): ()
 	hide_player_visual_objects(character)
 	destroy_character_sounds(character)
 	apply_player_part_state(character)
 	apply_player_humanoid_state(character)
-	create_or_update_player_token(player, character)
-	set_rbx_character_sounds_enabled(player, false)
+	create_or_update_player_token(character)
+	set_rbx_character_sounds_enabled(character, false)
 end
 
-local function apply_default_state(player: Player, character: Model): ()
+local function apply_default_state(character: Model): ()
 	remove_existing_token(character)
-	set_rbx_character_sounds_enabled(player, true)
+	set_rbx_character_sounds_enabled(character, true)
 end
 
-local function run_sanitize_loop(player: Player, character: Model, totalPasses: number, interval: number): ()
-	local nextVersion = (sanitizeVersionByPlayer[player] or 0) + 1
-	sanitizeVersionByPlayer[player] = nextVersion
+local function run_sanitize_loop(character: Model, totalPasses: number, interval: number): ()
+	local nextVersion = (sanitizeVersionByCharacter[character] or 0) + 1
+	sanitizeVersionByCharacter[character] = nextVersion
 
 	for passIndex = 1, totalPasses do
 		local currentPassIndex = passIndex
 
 		task.delay((currentPassIndex - 1) * interval, function()
-			if player.Parent ~= Players then
-				return
-			end
-
-			if sanitizeVersionByPlayer[player] ~= nextVersion then
-				return
-			end
-
-			if player.Character ~= character then
+			if sanitizeVersionByCharacter[character] ~= nextVersion then
 				return
 			end
 
@@ -375,54 +388,65 @@ local function run_sanitize_loop(player: Player, character: Model, totalPasses: 
 				return
 			end
 
-			if is_master(player) then
-				sanitize_master_character(player, character)
+			if is_master(character) then
+				sanitize_master_character(character)
 				return
 			end
 
-			if is_player_role(player) then
-				sanitize_player_character(player, character)
+			if is_player_role(character) then
+				sanitize_player_character(character)
 				return
 			end
 
-			apply_default_state(player, character)
+			apply_default_state(character)
 		end)
 	end
 end
 
-local function apply_role_state(player: Player): ()
-	local character = player.Character
-
+local function apply_role_state(character: Model): ()
 	if not character or not character.Parent then
 		return
 	end
 
-	if is_master(player) then
-		run_sanitize_loop(player, character, MASTER_SANITIZE_PASSES, MASTER_SANITIZE_INTERVAL)
+	if is_master(character) then
+		run_sanitize_loop(character, MASTER_SANITIZE_PASSES, MASTER_SANITIZE_INTERVAL)
 		return
 	end
 
-	if is_player_role(player) then
-		run_sanitize_loop(player, character, PLAYER_SANITIZE_PASSES, PLAYER_SANITIZE_INTERVAL)
+	if is_player_role(character) then
+		run_sanitize_loop(character, PLAYER_SANITIZE_PASSES, PLAYER_SANITIZE_INTERVAL)
 		return
 	end
 
-	sanitizeVersionByPlayer[player] = (sanitizeVersionByPlayer[player] or 0) + 1
-	apply_default_state(player, character)
+	sanitizeVersionByCharacter[character] = (sanitizeVersionByCharacter[character] or 0) + 1
+	apply_default_state(character)
 end
 
-local function on_character_added(player: Player, character: Model): ()
-	task.defer(function()
-		if player.Character ~= character then
-			return
-		end
+local function on_character_added(character: Model): ()
+	sanitizeVersionByCharacter[character] = 0
 
-		apply_role_state(player)
+	local currentImage = character:GetAttribute(ROLE_IMAGE_ATTRIBUTE_NAME)
+	if currentImage == nil or currentImage == "" then
+		character:SetAttribute(ROLE_IMAGE_ATTRIBUTE_NAME, DEFAULT_ROLE_IMAGE_ID)
+	end
+
+	character:GetAttributeChangedSignal(ROLE_IMAGE_ATTRIBUTE_NAME):Connect(function()
+		apply_role_state(character)
+	end)
+
+	task.defer(function()
+		apply_role_state(character)
 	end)
 end
 
+local function on_character_removing(character: Model): ()
+	sanitizeVersionByCharacter[character] = nil
+end
+
 local function on_role_image_request(sender: Player, payload: any): ()
-	if not is_master(sender) then
+	local characterCheck = Players:GetPlayerFromCharacter(sender.Character)
+
+	if not is_master(sender.Character and sender.Character or sender) and (characterCheck and sender.Team and sender.Team.Name ~= MASTER_TEAM_NAME) then
 		return
 	end
 
@@ -430,68 +454,49 @@ local function on_role_image_request(sender: Player, payload: any): ()
 		return
 	end
 
-	if typeof(payload.UserId) ~= "number" or typeof(payload.ImageId) ~= "string" then
+	if typeof(payload.Character) ~= "Instance" or not payload.Character:IsA("Model") or typeof(payload.ImageId) ~= "string" then
 		return
 	end
 
-	local targetPlayer = Players:GetPlayerByUserId(payload.UserId)
+	local character = payload.Character
+	character:SetAttribute(ROLE_IMAGE_ATTRIBUTE_NAME, normalize_image_id(payload.ImageId))
 
-	if not targetPlayer then
-		return
-	end
-
-	targetPlayer:SetAttribute(ROLE_IMAGE_ATTRIBUTE_NAME, normalize_image_id(payload.ImageId))
-
-	if is_player_role(targetPlayer) then
-		apply_role_state(targetPlayer)
-	end
+	apply_role_state(character)
 end
 
 local function on_player_added(player: Player): ()
-	sanitizeVersionByPlayer[player] = 0
-
-	if player:GetAttribute(ROLE_IMAGE_ATTRIBUTE_NAME) == nil then
-		player:SetAttribute(ROLE_IMAGE_ATTRIBUTE_NAME, "")
-	end
-
 	player:GetPropertyChangedSignal("Team"):Connect(function()
-		apply_role_state(player)
-	end)
-
-	player:GetAttributeChangedSignal(ROLE_IMAGE_ATTRIBUTE_NAME):Connect(function()
-		apply_role_state(player)
-	end)
-
-	player.CharacterAdded:Connect(function(character: Model)
-		on_character_added(player, character)
-	end)
-
-	local currentCharacter = player.Character
-
-	if currentCharacter then
-		on_character_added(player, currentCharacter)
-	end
-
-	task.delay(1, function()
-		if player.Parent ~= Players then
-			return
+		local character = player.Character
+		if character and character.Parent == charactersFolder then
+			apply_role_state(character)
 		end
-
-		apply_role_state(player)
 	end)
-end
-
-local function on_player_removing(player: Player): ()
-	sanitizeVersionByPlayer[player] = nil
 end
 
 ------------------//MAIN FUNCTIONS
 roleImageEvent.OnServerEvent:Connect(on_role_image_request)
+
+charactersFolder.ChildAdded:Connect(function(child)
+	if child:IsA("Model") then
+		on_character_added(child)
+	end
+end)
+
+charactersFolder.ChildRemoved:Connect(function(child)
+	if child:IsA("Model") then
+		on_character_removing(child)
+	end
+end)
+
+Players.PlayerAdded:Connect(on_player_added)
 
 ------------------//INIT
 for _, player in Players:GetPlayers() do
 	on_player_added(player)
 end
 
-Players.PlayerAdded:Connect(on_player_added)
-Players.PlayerRemoving:Connect(on_player_removing)
+for _, child in charactersFolder:GetChildren() do
+	if child:IsA("Model") then
+		on_character_added(child)
+	end
+end

@@ -9,7 +9,6 @@ RbxCharacterSounds - DO NOT MODIFY THIS SCRIPT UNLESS YOU KNOW WHAT YOU'RE DOING
 
 ]] 
 
-
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local FootstepsSoundGroup = game:GetService("SoundService"):WaitForChild("Footsteps")
@@ -88,6 +87,11 @@ local function initializeSoundSystem(player, humanoid, rootPart)
 	local sounds = {}
 
 	for name, props in pairs(SOUND_DATA) do
+		local existingSound = rootPart:FindFirstChild(name)
+		if existingSound and existingSound:IsA("Sound") then
+			existingSound:Destroy()
+		end
+
 		local sound = Instance.new("Sound")
 		sound.Name = name
 
@@ -182,7 +186,7 @@ local function initializeSoundSystem(player, humanoid, rootPart)
 			playSound(sounds.Died)
 		end,
 	}
-	
+
 	local loopedSoundUpdaters = {
 		[sounds.Climbing] = function(dt, sound, vel)
 			sound.Playing = vel.Magnitude > 0.1
@@ -197,8 +201,6 @@ local function initializeSoundSystem(player, humanoid, rootPart)
 		end,
 
 		[sounds.Running] = function(dt, sound, vel)
-			--sound.Playing = vel.Magnitude > 0.5 and humanoid.MoveDirection.Magnitude > 0.5
-
 			sound.SoundId = FootstepsSoundGroup:WaitForChild(humanoid.FloorMaterial.Name).SoundId 
 			sound.PlaybackSpeed = FootstepsSoundGroup:WaitForChild(humanoid.FloorMaterial.Name).PlaybackSpeed * (vel.Magnitude/20)
 			sound.Volume = FootstepsSoundGroup:WaitForChild(humanoid.FloorMaterial.Name).Volume * (vel.Magnitude/12) * 1
@@ -212,7 +214,7 @@ local function initializeSoundSystem(player, humanoid, rootPart)
 			end
 		end,
 	}
-	
+
 	local stateRemap = {
 		[Enum.HumanoidStateType.RunningNoPhysics] = Enum.HumanoidStateType.Running,
 	}
@@ -313,9 +315,8 @@ for _, player in ipairs(Players:GetPlayers()) do
 	playerAdded(player)
 end
 
-
 repeat
-	wait()
+	task.wait()
 until game.Players.LocalPlayer.Character
 
 local Character = game.Players.LocalPlayer.Character

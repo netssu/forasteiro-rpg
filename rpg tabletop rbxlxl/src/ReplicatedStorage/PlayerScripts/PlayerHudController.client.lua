@@ -18,7 +18,11 @@ local teamSelectEvent: RemoteEvent = remotesFolder:WaitForChild(TEAM_REMOTE_NAME
 
 local playerHud: ScreenGui? = nil
 local returnButton: TextButton? = nil
+local healthLabel: TextLabel? = nil
 local buttonsConnected: boolean = false
+
+local healthConnection: RBXScriptConnection? = nil
+local maxHealthConnection: RBXScriptConnection? = nil
 
 ------------------//FUNCTIONS
 local function is_player_role(): boolean
@@ -31,13 +35,19 @@ local function cache_gui_objects(): ()
 	if not guiObject or not guiObject:IsA("ScreenGui") then
 		playerHud = nil
 		returnButton = nil
+		healthLabel = nil
 		return
 	end
 
 	playerHud = guiObject
+
 	returnButton = playerHud:FindFirstChild("Main")
 		and playerHud.Main:FindFirstChild("TopBar")
 		and playerHud.Main.TopBar:FindFirstChild("ReturnButton")
+		or nil
+
+	healthLabel = playerHud:FindFirstChild("Main")
+		and playerHud.Main:FindFirstChild("HealthLabel")
 		or nil
 end
 
@@ -65,6 +75,33 @@ local function connect_buttons(): ()
 	end)
 end
 
+local function update_health_display(): ()
+	if not healthLabel then return end
+
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+
+	if humanoid then
+		local currentHp = math.floor(humanoid.Health + 0.5)
+		local maxHp = math.floor(humanoid.MaxHealth + 0.5)
+		healthLabel.Text = "HP: " .. tostring(currentHp) .. " / " .. tostring(maxHp)
+	else
+		healthLabel.Text = "HP: -- / --"
+	end
+end
+
+local function setup_character_health(character: Model): ()
+	if healthConnection then healthConnection:Disconnect() end
+	if maxHealthConnection then maxHealthConnection:Disconnect() end
+
+	local humanoid = character:WaitForChild("Humanoid", 5)
+	if humanoid then
+		healthConnection = humanoid.HealthChanged:Connect(update_health_display)
+		maxHealthConnection = humanoid:GetPropertyChangedSignal("MaxHealth"):Connect(update_health_display)
+		update_health_display()
+	end
+end
+
 local function on_gui_added(child: Instance): ()
 	if child.Name ~= GUI_NAME then
 		return
@@ -76,6 +113,7 @@ local function on_gui_added(child: Instance): ()
 		cache_gui_objects()
 		connect_buttons()
 		update_gui_state()
+		update_health_display()
 	end)
 end
 
@@ -84,7 +122,8 @@ player:GetPropertyChangedSignal("Team"):Connect(function()
 	update_gui_state()
 end)
 
-player.CharacterAdded:Connect(function()
+player.CharacterAdded:Connect(function(character: Model)
+	setup_character_health(character)
 	task.defer(function()
 		update_gui_state()
 	end)
@@ -96,3 +135,7 @@ playerGui.ChildAdded:Connect(on_gui_added)
 cache_gui_objects()
 connect_buttons()
 update_gui_state()
+
+if player.Character then
+	setup_character_health(player.Character)
+end

@@ -1,14 +1,9 @@
 ------------------//SERVICES
 local Players: Players = game:GetService("Players")
-local Teams: Teams = game:GetService("Teams")
+local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService: RunService = game:GetService("RunService")
 
 ------------------//CONSTANTS
-local PLAYER_TEAM_NAME: string = "Jogador"
-
-local BOT_ATTRIBUTE_NAME: string = "StudioAutoBot"
-local BOT_ASSIGNED_ATTRIBUTE_NAME: string = "StudioAutoBotAssigned"
-
 local MIN_RADIUS: number = 8
 local MAX_RADIUS: number = 20
 
@@ -22,34 +17,11 @@ local MOVE_TIMEOUT: number = 3
 local IDLE_BETWEEN_CIRCLES: number = 0.35
 
 ------------------//VARIABLES
-local assignedBotUserId: number? = nil
+local assetsFolder: Folder = ReplicatedStorage:WaitForChild("Assets")
+local remotesFolder: Folder = assetsFolder:WaitForChild("Remotes")
+local diceEvent: RemoteEvent = remotesFolder:WaitForChild("DiceEvent") :: RemoteEvent
 
 ------------------//FUNCTIONS
-local function get_team_by_name(teamName: string): Team?
-	local team = Teams:FindFirstChild(teamName)
-
-	if team and team:IsA("Team") then
-		return team
-	end
-
-	return nil
-end
-
-local function set_as_player_team(player: Player): ()
-	local team = get_team_by_name(PLAYER_TEAM_NAME)
-
-	if not team then
-		return
-	end
-
-	player.Neutral = false
-	player.Team = team
-end
-
-local function is_bot_player(player: Player): boolean
-	return player:GetAttribute(BOT_ATTRIBUTE_NAME) == true
-end
-
 local function move_to(humanoid: Humanoid, targetPosition: Vector3): ()
 	local finished: boolean = false
 
@@ -68,7 +40,7 @@ local function move_to(humanoid: Humanoid, targetPosition: Vector3): ()
 	connection:Disconnect()
 end
 
-local function walk_random_circle(player: Player, character: Model): ()
+local function walk_random_circle(character: Model): ()
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	local rootPart = character:FindFirstChild("HumanoidRootPart")
 
@@ -83,19 +55,7 @@ local function walk_random_circle(player: Player, character: Model): ()
 	local randomAngle = math.rad(math.random(0, 359))
 
 	for pointIndex = 1, pointCount do
-		if not player.Parent then
-			return
-		end
-
-		if not is_bot_player(player) then
-			return
-		end
-
-		if player.Team == nil or player.Team.Name ~= PLAYER_TEAM_NAME then
-			return
-		end
-
-		if player.Character ~= character then
+		if not character.Parent then
 			return
 		end
 
@@ -118,68 +78,36 @@ local function walk_random_circle(player: Player, character: Model): ()
 	end
 end
 
-local function bot_loop(player: Player, character: Model): ()
+local function bot_roll_loop(character: Model): ()
 	task.spawn(function()
-		while player.Parent and player.Character == character and is_bot_player(player) do
-			if player.Team and player.Team.Name == PLAYER_TEAM_NAME then
-				walk_random_circle(player, character)
-			end
+		while character.Parent do
+			task.wait(10)
 
+			local roll = math.random(1, 20)
+
+			-- Finge uma rolagem de 1d20 para todos os clientes verem
+			diceEvent:FireAllClients({
+				Action = "RollResult",
+				Player = nil, -- Bot não é um Player real
+				Character = character,
+				Expression = "1d20",
+				Total = roll,
+				Rolls = {roll},
+				IsMaster = false,
+				IsInstant = false
+			})
+		end
+	end)
+end
+
+local function bot_loop(character: Model): ()
+	bot_roll_loop(character)
+
+	task.spawn(function()
+		while character.Parent do
+			walk_random_circle(character)
 			task.wait(IDLE_BETWEEN_CIRCLES)
 		end
-	end)
-end
-
-local function assign_second_player_as_bot(): ()
-	if assignedBotUserId ~= nil then
-		return
-	end
-
-	local playersList = Players:GetPlayers()
-
-	if #playersList < 2 then
-		return
-	end
-
-	local targetPlayer = playersList[2]
-
-	if not targetPlayer then
-		return
-	end
-
-	assignedBotUserId = targetPlayer.UserId
-	targetPlayer:SetAttribute(BOT_ATTRIBUTE_NAME, true)
-	targetPlayer:SetAttribute(BOT_ASSIGNED_ATTRIBUTE_NAME, true)
-
-	set_as_player_team(targetPlayer)
-
-	if targetPlayer.Character then
-		bot_loop(targetPlayer, targetPlayer.Character)
-	end
-end
-
-local function on_character_added(player: Player, character: Model): ()
-	task.defer(function()
-		if not player.Parent then
-			return
-		end
-
-		if not is_bot_player(player) then
-			return
-		end
-
-		set_as_player_team(player)
-		bot_loop(player, character)
-	end)
-end
-
-local function on_player_added(player: Player): ()
-	player.CharacterAdded:Connect(function(character: Model)
-		on_character_added(player, character)
-	end)
-
-	task.defer(function()
-		assign_second_player_as_bot()
 	end)
 end
 
@@ -188,8 +116,10 @@ if not RunService:IsStudio() then
 	return
 end
 
-for _, player in Players:GetPlayers() do
-	on_player_added(player)
-end
+-- Procura o TestBot na pasta Characters (onde movemos ele antes) ou direto no Workspace
+local charactersFolder = workspace:FindFirstChild("Characters")
+local testBot = charactersFolder and charactersFolder:FindFirstChild("TestBot") or workspace:FindFirstChild("TestBot")
 
-Players.PlayerAdded:Connect(on_player_added)
+if testBot then
+	bot_loop(testBot)
+end
