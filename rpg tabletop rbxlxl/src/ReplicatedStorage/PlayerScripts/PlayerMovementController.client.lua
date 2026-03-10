@@ -1,5 +1,6 @@
 ------------------//SERVICES
 local Players: Players = game:GetService("Players")
+local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService: RunService = game:GetService("RunService")
 local UserInputService: UserInputService = game:GetService("UserInputService")
 local Workspace: Workspace = game:GetService("Workspace")
@@ -7,8 +8,15 @@ local Workspace: Workspace = game:GetService("Workspace")
 ------------------//CONSTANTS
 local PLAYER_TEAM_NAME: string = "Jogador"
 local GUI_NAME: string = "PlayerHud"
+local ASSETS_FOLDER_NAME: string = "Assets"
+local REMOTES_FOLDER_NAME: string = "Remotes"
+local REMOTE_NAME: string = "PlayerMovementEvent"
+local TURN_REMOTE_NAME: string = "PlayerTurnEvent"
 
-local MAX_DISTANCE: number = 9.0
+local MAX_DISTANCE_METERS: number = 9.0
+local STUDS_PER_METER: number = 3.6
+local MAX_DISTANCE_STUDS: number = MAX_DISTANCE_METERS * STUDS_PER_METER
+
 local POINT_INTERVAL: number = 0.5
 local TELEPORT_THRESHOLD: number = 8.0
 local DEFAULT_WALKSPEED: number = 16
@@ -17,12 +25,14 @@ local DEFAULT_WALKSPEED: number = 16
 local player: Player = Players.LocalPlayer
 local playerGui: PlayerGui = player:WaitForChild("PlayerGui")
 
+local assetsFolder: Folder = ReplicatedStorage:WaitForChild(ASSETS_FOLDER_NAME)
+local remotesFolder: Folder = assetsFolder:WaitForChild(REMOTES_FOLDER_NAME)
+local movementEvent: RemoteEvent = remotesFolder:WaitForChild(REMOTE_NAME)
+local turnEvent: RemoteEvent = remotesFolder:WaitForChild(TURN_REMOTE_NAME)
+
 local moveFrame: Frame? = nil
 local distanceLabel: TextLabel? = nil
 local undoButton: TextButton? = nil
-
-local trailFolder: Folder? = nil
-local trailParts = {}
 
 local isTracking: boolean = false
 local isMyTurn: boolean = false
@@ -34,42 +44,27 @@ local uiConnected: boolean = false
 
 ------------------//FUNCTIONS
 local function is_player_role(): boolean
-	return player.Team ~= nil and player.Team.Name == PLAYER_TEAM_NAME
-end
+	if player.Team ~= nil and player.Team.Name == PLAYER_TEAM_NAME then return true end
 
-local function get_trail_folder(): Folder
-	if trailFolder and trailFolder.Parent == Workspace then
-		return trailFolder
+	local char = player.Character
+	if player.Team ~= nil and player.Team.Name == "Mestre" and char and char:GetAttribute("IsNPC") then
+		return true
 	end
 
-	local folder = Workspace:FindFirstChild("PlayerTrails")
-
-	if not folder then
-		folder = Instance.new("Folder")
-		folder.Name = "PlayerTrails"
-		folder.Parent = Workspace
-	end
-
-	trailFolder = folder
-	return folder
+	return false
 end
 
 local function clear_trail(): ()
-	for _, part in trailParts do
-		if part then
-			part:Destroy()
-		end
-	end
-
-	table.clear(trailParts)
+	movementEvent:FireServer({ Action = "ClearTrail" })
 end
 
 local function update_ui(): ()
 	if not distanceLabel then return end
 
-	distanceLabel.Text = string.format("%.1f / %.1f m", currentDistance, MAX_DISTANCE)
+	local distanceInMeters = currentDistance / STUDS_PER_METER
+	distanceLabel.Text = string.format("%.1f / %.1f m", distanceInMeters, MAX_DISTANCE_METERS)
 
-	if currentDistance >= MAX_DISTANCE then
+	if currentDistance >= MAX_DISTANCE_STUDS then
 		distanceLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
 	else
 		distanceLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -150,21 +145,11 @@ local function get_rotation_only_cframe(cframe: CFrame): CFrame
 end
 
 local function draw_segment(p1: Vector3, p2: Vector3): ()
-	local distance = (p2 - p1).Magnitude
-	local folder = get_trail_folder()
-
-	local part = Instance.new("Part")
-	part.Anchored = true
-	part.CanCollide = false
-	part.CanQuery = false
-	part.Material = Enum.Material.Neon
-	part.Color = Color3.fromRGB(255, 255, 255)
-
-	part.Size = Vector3.new(0.15, 0.15, distance)
-	part.CFrame = CFrame.lookAt(p1, p2) * CFrame.new(0, 0, -distance / 2)
-	part.Parent = folder
-
-	table.insert(trailParts, part)
+	movementEvent:FireServer({
+		Action = "DrawSegment",
+		P1 = p1,
+		P2 = p2
+	})
 end
 
 local function cache_ui(): ()
@@ -213,8 +198,10 @@ RunService.RenderStepped:Connect(function()
 		start_new_path(rootPart)
 		return
 	end
+	
+	local currentMaxDistance = character:GetAttribute("MaxMovementDistance") or MAX_DISTANCE_STUDS
 
-	if currentDistance >= MAX_DISTANCE then
+	if currentDistance >= currentMaxDistance then
 		block_walkspeed()
 		return
 	end
@@ -228,13 +215,13 @@ RunService.RenderStepped:Connect(function()
 	end
 
 	if distanceMoved >= POINT_INTERVAL then
-		if currentDistance + distanceMoved >= MAX_DISTANCE then
-			local remaining = MAX_DISTANCE - currentDistance
+		if currentDistance + distanceMoved >= MAX_DISTANCE_STUDS then
+			local remaining = MAX_DISTANCE_STUDS - currentDistance
 			local direction = (currentFootPos - lastPoint).Unit
 			local finalPos = lastPoint + direction * remaining
 
 			draw_segment(lastPoint, finalPos)
-			currentDistance = MAX_DISTANCE
+			currentDistance = MAX_DISTANCE_STUDS
 			lastPoint = finalPos
 
 			rootPart.CFrame = CFrame.new(finalPos + Vector3.new(0, 2.5, 0)) * get_rotation_only_cframe(rootPart.CFrame)
@@ -254,16 +241,15 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 	if gameProcessed then return end
 	if not is_player_role() then return end
 
-	if input.KeyCode == Enum.KeyCode.T then
-		set_turn_state(not isMyTurn)
-		return
-	end
-
 	if isMyTurn then
 		if input.KeyCode == Enum.KeyCode.Z then
 			undo_path()
 		end
 	end
+end)
+
+turnEvent.OnClientEvent:Connect(function(state: boolean)
+	set_turn_state(state)
 end)
 
 player:GetPropertyChangedSignal("Team"):Connect(update_visibility)
@@ -284,6 +270,5 @@ playerGui.ChildAdded:Connect(function(child: Instance)
 end)
 
 ------------------//INIT
-get_trail_folder()
 update_visibility()
 set_turn_state(false)

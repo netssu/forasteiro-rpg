@@ -21,6 +21,7 @@ local WHEEL_MOVE_STEP: number = 10
 local MIN_PITCH: number = math.rad(-89)
 local MAX_PITCH: number = math.rad(89)
 local PLAYER_MOUSE_TOGGLE_KEY: Enum.KeyCode = Enum.KeyCode.P
+local PLAYER_CAMERA_OFFSET_Y: number = 1
 
 ------------------//VARIABLES
 local player: Player = Players.LocalPlayer
@@ -257,11 +258,17 @@ end
 
 local function apply_player_camera_mode(): ()
 	local currentCamera = get_current_camera()
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 
 	currentCamera.CameraType = Enum.CameraType.Custom
 	player.CameraMinZoomDistance = 0.5
 	player.CameraMaxZoomDistance = 0.5
 	player.CameraMode = Enum.CameraMode.LockFirstPerson
+
+	if humanoid then
+		humanoid.CameraOffset = Vector3.new(0, PLAYER_CAMERA_OFFSET_Y, 0)
+	end
 
 	apply_mouse_state()
 end
@@ -280,13 +287,35 @@ local function clear_role_camera_state(): ()
 	player.CameraMinZoomDistance = 0.5
 	player.CameraMaxZoomDistance = 12
 
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid.CameraOffset = Vector3.zero
+	end
+
 	apply_mouse_state()
 end
 
 local function update_role_state(): ()
 	if is_master_role() then
-		enable_spectator_mode()
-		return
+		local char = player.Character
+		if char and char:GetAttribute("IsNPC") then
+			-- O Mestre está possuindo um NPC! Ativa a 3ª pessoa.
+			disable_spectator_mode()
+			local currentCamera = get_current_camera()
+			currentCamera.CameraType = Enum.CameraType.Custom
+			player.CameraMinZoomDistance = 5
+			player.CameraMaxZoomDistance = 15
+			player.CameraMode = Enum.CameraMode.Classic
+
+			UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+			UserInputService.MouseIconEnabled = true
+			return
+		else
+			-- Mestre normal invisível
+			enable_spectator_mode()
+			return
+		end
 	end
 
 	if is_player_role() then
@@ -415,6 +444,8 @@ player.CharacterAdded:Connect(function()
 		update_role_state()
 	end)
 end)
+
+player:GetPropertyChangedSignal("Character"):Connect(update_role_state)
 
 playerGui.ChildAdded:Connect(on_gui_added)
 

@@ -34,6 +34,19 @@ local WALL_ENDPOINT_SNAP_DISTANCE: number = 5
 local ACTIVE_BUTTON_COLOR: Color3 = Color3.fromRGB(219, 184, 74)
 local INACTIVE_BUTTON_COLOR: Color3 = Color3.fromRGB(34, 36, 44)
 
+local KEY_MAP: {[Enum.KeyCode]: number} = {
+	[Enum.KeyCode.One] = 1,
+	[Enum.KeyCode.Two] = 2,
+	[Enum.KeyCode.Three] = 3,
+	[Enum.KeyCode.Four] = 4,
+	[Enum.KeyCode.Five] = 5,
+	[Enum.KeyCode.Six] = 6,
+	[Enum.KeyCode.Seven] = 7,
+	[Enum.KeyCode.Eight] = 8,
+	[Enum.KeyCode.Nine] = 9,
+	[Enum.KeyCode.Zero] = 10
+}
+
 ------------------//VARIABLES
 local player: Player = Players.LocalPlayer
 local playerGui: PlayerGui = player:WaitForChild("PlayerGui")
@@ -447,6 +460,26 @@ local function set_status(text: string): ()
 	end
 end
 
+local function get_ordered_modes(): {string}
+	local activeModes = {}
+
+	if selectModeButton then table.insert(activeModes, {btn = selectModeButton, mode = TOOL_MODE_SELECT}) end
+	if createModeButton then table.insert(activeModes, {btn = createModeButton, mode = TOOL_MODE_CREATE}) end
+	if wallModeButton then table.insert(activeModes, {btn = wallModeButton, mode = TOOL_MODE_WALL}) end
+	if lightModeButton then table.insert(activeModes, {btn = lightModeButton, mode = TOOL_MODE_LIGHT}) end
+
+	table.sort(activeModes, function(a, b)
+		return a.btn.AbsolutePosition.Y < b.btn.AbsolutePosition.Y
+	end)
+
+	local ordered = {}
+	for _, item in ipairs(activeModes) do
+		table.insert(ordered, item.mode)
+	end
+
+	return ordered
+end
+
 local function update_mode_buttons(): ()
 	if selectModeButton then
 		selectModeButton.BackgroundColor3 = toolMode == TOOL_MODE_SELECT and ACTIVE_BUTTON_COLOR or INACTIVE_BUTTON_COLOR
@@ -618,8 +651,6 @@ local function build_raycast_result(): RaycastResult?
 	if player.Character then table.insert(filterList, player.Character) end
 	if previewPart then table.insert(filterList, previewPart) end
 
-	-- Exclui a pasta de Hitboxes se o Mestre estiver usando ferramenta de parede/bloco/luz.
-	-- Assim ele consegue clicar no chão perto de um boneco para construir coisas!
 	local canSelectCharacters = toolMode == TOOL_MODE_NONE or toolMode == TOOL_MODE_SELECT or not is_sidebar_visible()
 	if not canSelectCharacters then
 		local hitboxesFolder = workspace:FindFirstChild("MasterHitboxes")
@@ -643,7 +674,6 @@ local function resolve_click_target(): (string, BasePart?, Model?)
 	local instance = raycastResult.Instance
 
 	if instance:IsA("BasePart") then
-		-- Verifica se o clique foi na "Hitbox Gordinha"
 		local targetVal = instance:FindFirstChild("TargetCharacter")
 		if targetVal and targetVal:IsA("ObjectValue") and targetVal.Value then
 			return "Character", nil, targetVal.Value
@@ -1492,7 +1522,6 @@ local function reset_when_role_changes(): ()
 	hide_preview()
 end
 
--- Cria as Hitboxes no Cliente para o Mestre clicar mais fácil
 local function sync_master_hitboxes(): ()
 	local hitboxesFolder = workspace:FindFirstChild("MasterHitboxes")
 
@@ -1523,7 +1552,7 @@ local function sync_master_hitboxes(): ()
 				if not hitbox then
 					hitbox = Instance.new("Part")
 					hitbox.Name = hitboxName
-					hitbox.Size = Vector3.new(4, 7, 4) -- Hitbox bem gordinha (4x7x4)
+					hitbox.Size = Vector3.new(4, 7, 4)
 					hitbox.Transparency = 1
 					hitbox.CanCollide = false
 					hitbox.CanQuery = true
@@ -1543,7 +1572,6 @@ local function sync_master_hitboxes(): ()
 		end
 	end
 
-	-- Remove hitboxes de personagens que não existem mais
 	for _, hb in hitboxesFolder:GetChildren() do
 		local targetVal = hb:FindFirstChild("TargetCharacter")
 		if not targetVal or not targetVal.Value or not processed[targetVal.Value] then
@@ -1563,6 +1591,17 @@ end)
 
 UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
 	if gameProcessed then return end
+
+	local keyIndex = KEY_MAP[input.KeyCode]
+	if keyIndex and is_master() and is_sidebar_visible() then
+		local orderedModes = get_ordered_modes()
+		local selectedMode = orderedModes[keyIndex]
+
+		if selectedMode then
+			set_tool_mode(selectedMode)
+		end
+		return
+	end
 
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
 		handle_world_left_click()

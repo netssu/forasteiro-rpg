@@ -2,7 +2,7 @@
 local Players: Players = game:GetService("Players")
 local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService: UserInputService = game:GetService("UserInputService")
-local Workspace: Workspace = game:GetService("Workspace")
+
 local RunService: RunService = game:GetService("RunService")
 
 ------------------//CONSTANTS
@@ -17,7 +17,7 @@ local UPDATE_REMOTE_NAME: string = "FlashlightUpdateEvent"
 ------------------//VARIABLES
 local player: Player = Players.LocalPlayer
 local playerGui: PlayerGui = player:WaitForChild("PlayerGui")
-local camera: Camera = Workspace.CurrentCamera
+local camera: Camera = workspace.CurrentCamera
 
 local assetsFolder: Folder = ReplicatedStorage:WaitForChild(ASSETS_FOLDER_NAME)
 local remotesFolder: Folder = assetsFolder:WaitForChild(REMOTES_FOLDER_NAME)

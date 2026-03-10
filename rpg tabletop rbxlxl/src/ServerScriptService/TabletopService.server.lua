@@ -3,7 +3,7 @@ local Players: Players = game:GetService("Players")
 local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Lighting: Lighting = game:GetService("Lighting")
 local SoundService: SoundService = game:GetService("SoundService")
-local Workspace: Workspace = game:GetService("Workspace")
+
 
 ------------------//CONSTANTS
 local MASTER_TEAM_NAME: string = "Mestre"
@@ -16,17 +16,25 @@ local RAIN_SOUND_NAME: string = "RainAmbient"
 local MANAGED_ATTRIBUTE_NAME: string = "TabletopManaged"
 local CHARACTERS_FOLDER_NAME: string = "Characters"
 
+-- Novas constantes para integração de movimento
+local MOVEMENT_REMOTE_NAME: string = "PlayerMovementEvent"
+local TURN_REMOTE_NAME: string = "PlayerTurnEvent"
+
 ------------------//VARIABLES
 local assetsFolder: Folder = ReplicatedStorage:WaitForChild("Assets")
 local remotesFolder: Folder = assetsFolder:WaitForChild("Remotes")
 local lightingPresetsFolder: Folder = assetsFolder:WaitForChild("LightingPresets")
 local tabletopEvent: RemoteEvent = remotesFolder:WaitForChild(REMOTE_NAME)
 
-local charactersFolder = Workspace:FindFirstChild(CHARACTERS_FOLDER_NAME)
+-- Referências aos remotes de movimento
+local movementEvent: RemoteEvent = remotesFolder:WaitForChild(MOVEMENT_REMOTE_NAME)
+local turnEvent: RemoteEvent = remotesFolder:WaitForChild(TURN_REMOTE_NAME)
+
+local charactersFolder = workspace:FindFirstChild(CHARACTERS_FOLDER_NAME)
 if not charactersFolder then
 	charactersFolder = Instance.new("Folder")
 	charactersFolder.Name = CHARACTERS_FOLDER_NAME
-	charactersFolder.Parent = Workspace
+	charactersFolder.Parent = workspace
 end
 
 local state = {
@@ -380,9 +388,21 @@ local function refresh_turn_and_lock_state(): ()
 		character:SetAttribute("MovementLocked", movementLocked)
 
 		local rootPart = character:FindFirstChild("HumanoidRootPart")
+		local player = Players:GetPlayerFromCharacter(character)
 
 		if rootPart and rootPart:IsA("BasePart") then
 			rootPart.Anchored = movementLocked
+		end
+
+		-- Sincronização com o PlayerMovementController
+		if player then
+			-- Ativa ou desativa a UI de movimento e o rastreamento no cliente
+			turnEvent:FireClient(player, isTurnActive)
+
+			-- Se o turno acabou de começar para este jogador, limpa o rastro anterior
+			if isTurnActive then
+				movementEvent:FireClient(player, { Action = "ClearTrail" })
+			end
 		end
 	end
 end

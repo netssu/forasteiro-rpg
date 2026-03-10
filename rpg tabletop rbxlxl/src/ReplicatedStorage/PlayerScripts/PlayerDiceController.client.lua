@@ -4,7 +4,7 @@ local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage"
 local RunService: RunService = game:GetService("RunService")
 local TweenService: TweenService = game:GetService("TweenService")
 local UserInputService: UserInputService = game:GetService("UserInputService")
-local Workspace: Workspace = game:GetService("Workspace")
+
 
 ------------------//CONSTANTS
 local PLAYER_TEAM_NAME: string = "Jogador"
@@ -113,7 +113,7 @@ end
 local function animate_local_physics_dice(total: number, rolls: {number}, expression: string): ()
 	local character = player.Character
 	local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-	local cam = Workspace.CurrentCamera
+	local cam = workspace.CurrentCamera
 
 	local spawnCFrame
 	if rootPart then
@@ -136,7 +136,7 @@ local function animate_local_physics_dice(total: number, rolls: {number}, expres
 
 		local offset = Vector3.new(math.random(-4, 4)/10, math.random(0, 8)/10, math.random(-4, 4)/10)
 		part.CFrame = CFrame.new(spawnBase + offset) * CFrame.Angles(math.random(), math.random(), math.random())
-		part.Parent = Workspace
+		part.Parent = workspace
 
 		local forwardPower = math.random(15, 20)
 		local upwardPower = math.random(6, 12)
@@ -200,7 +200,7 @@ local function animate_local_physics_dice(total: number, rolls: {number}, expres
 			centerAnchor.Transparency = 1
 			centerAnchor.Size = Vector3.new(1, 1, 1)
 			centerAnchor.Position = centerPosition
-			centerAnchor.Parent = Workspace
+			centerAnchor.Parent = workspace
 
 			local modStr = string.match(expression, "([+-]%d+)$")
 			local totalText = "( " .. tostring(total) .. " )"
@@ -291,7 +291,7 @@ local function animate_world_dice(character: Model, total: number): ()
 	dice.Anchored = true
 	dice.CanCollide = false
 	dice.CanQuery = false
-	dice.Parent = Workspace
+	dice.Parent = workspace
 
 	local startTime = time()
 	local spinDuration = 1.0

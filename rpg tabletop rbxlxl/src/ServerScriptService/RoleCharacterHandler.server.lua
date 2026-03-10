@@ -1,7 +1,7 @@
 ------------------//SERVICES
 local Players: Players = game:GetService("Players")
 local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Workspace: Workspace = game:GetService("Workspace")
+
 
 ------------------//CONSTANTS
 local MASTER_TEAM_NAME: string = "Mestre"
@@ -51,15 +51,19 @@ if not roleImageEvent then
 	roleImageEvent.Parent = remotesFolder
 end
 
-local charactersFolder = Workspace:FindFirstChild(CHARACTERS_FOLDER_NAME)
+local charactersFolder = workspace:FindFirstChild(CHARACTERS_FOLDER_NAME)
 if not charactersFolder then
 	charactersFolder = Instance.new("Folder")
 	charactersFolder.Name = CHARACTERS_FOLDER_NAME
-	charactersFolder.Parent = Workspace
+	charactersFolder.Parent = workspace
 end
 
 ------------------//FUNCTIONS
 local function get_character_role(character: Model): string
+	if character:GetAttribute("IsNPC") then
+		return PLAYER_TEAM_NAME
+	end
+
 	local player = Players:GetPlayerFromCharacter(character)
 	if player and player.Team then
 		return player.Team.Name
@@ -172,8 +176,9 @@ end
 local function get_token_size(character: Model): Vector3
 	local height = get_character_height(character)
 	local width = math.max(TOKEN_MIN_WIDTH, height * TOKEN_WIDTH_RATIO)
+	local scale = character:GetAttribute("TokenScale") or 1
 
-	return Vector3.new(width, height, TOKEN_THICKNESS)
+	return Vector3.new(width * scale, height * scale, TOKEN_THICKNESS)
 end
 
 local function create_surface_image(parent: SurfaceGui, imageName: string, imageAsset: string, imageColor: Color3?): ()
