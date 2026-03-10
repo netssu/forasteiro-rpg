@@ -272,7 +272,7 @@ local function create_or_update_player_token(character: Model): ()
 		newTokenPart.CFrame = rootPart.CFrame * CFrame.new(0, 0, -TOKEN_FORWARD_OFFSET)
 		newTokenPart.Parent = character
 
-		local weld = Instance.new("Motor6D", newTokenPart)
+		local weld = Instance.new("WeldConstraint", newTokenPart)
 		weld.Name = ROLE_TOKEN_WELD_NAME
 		weld.Part0 = rootPart
 		weld.Part1 = newTokenPart

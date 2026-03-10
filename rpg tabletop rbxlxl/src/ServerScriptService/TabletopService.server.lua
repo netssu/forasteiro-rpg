@@ -137,7 +137,7 @@ local function apply_health_to_character(character: Model): ()
 	local entry = ensure_health_entry(character)
 
 	humanoid.MaxHealth = math.max(1, entry.Max)
-	humanoid.Health = math.clamp(entry.Current, 0, humanoid.MaxHealth)
+	humanoid.Health = math.clamp(entry.Current, 0.1, humanoid.MaxHealth)
 end
 
 local function disconnect_health_connections(character: Model): ()

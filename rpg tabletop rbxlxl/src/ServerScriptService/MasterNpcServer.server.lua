@@ -1,22 +1,18 @@
-------------------//SERVICES
 local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace: Workspace = game:GetService("Workspace")
 local Players: Players = game:GetService("Players")
 
-------------------//CONSTANTS
 local ASSETS_FOLDER_NAME: string = "Assets"
 local REMOTES_FOLDER_NAME: string = "Remotes"
 local REMOTE_NAME: string = "MasterNpcEvent"
 local CHARACTERS_FOLDER_NAME: string = "Characters"
 
-------------------//VARIABLES
 local assetsFolder: Folder = ReplicatedStorage:WaitForChild(ASSETS_FOLDER_NAME)
 local remotesFolder: Folder = assetsFolder:WaitForChild(REMOTES_FOLDER_NAME)
 local npcEvent: RemoteEvent = remotesFolder:FindFirstChild(REMOTE_NAME) or Instance.new("RemoteEvent")
 
 local charactersFolder = Workspace:WaitForChild(CHARACTERS_FOLDER_NAME)
 
-------------------//FUNCTIONS
 local function create_npc(position: Vector3): ()
 	local modelsFolder = assetsFolder:FindFirstChild("Models")
 	local rigTemplate = modelsFolder and modelsFolder:FindFirstChild("Rig")
@@ -29,7 +25,6 @@ local function create_npc(position: Vector3): ()
 	local npc = rigTemplate:Clone()
 	npc.Name = "Inimigo"
 
-	-- Posiciona o modelo de forma segura usando o Pivot (evita bugs de física)
 	npc:PivotTo(CFrame.new(position + Vector3.new(0, 3, 0)))
 
 	local humanoid = npc:FindFirstChildOfClass("Humanoid")
@@ -42,7 +37,6 @@ local function create_npc(position: Vector3): ()
 	npc:SetAttribute("TokenScale", 1)
 	npc:SetAttribute("MaxMovementDistance", math.huge)
 
-	-- O RoleCharacterHandler vai escutar esse Parent e colocar a placa 2D
 	npc.Parent = charactersFolder
 end
 
@@ -76,7 +70,6 @@ local function handle_npc_event(player: Player, data: any): ()
 		end
 
 		if data.RotationY then
-			-- Usa PivotTo também para rotacionar com segurança
 			local currentPos = npc:GetPivot().Position
 			npc:PivotTo(CFrame.new(currentPos) * CFrame.Angles(0, math.rad(data.RotationY), 0))
 		end
@@ -84,18 +77,32 @@ local function handle_npc_event(player: Player, data: any): ()
 	elseif action == "Possess" then
 		local npc = data.NPC
 		if npc and npc:IsDescendantOf(charactersFolder) then
+			local oldChar = player.Character
+			if oldChar == npc then return end
+			if oldChar and oldChar:GetAttribute("IsNPC") then
+				oldChar.Archivable = true
+				local clone = oldChar:Clone()
+				clone.Parent = charactersFolder
+				oldChar:Destroy()
+			end
 			player.Character = npc
 		end
 
 	elseif action == "Unpossess" then
+		local oldChar = player.Character
+		if oldChar and oldChar:GetAttribute("IsNPC") then
+			oldChar.Archivable = true
+			local clone = oldChar:Clone()
+			clone.Parent = charactersFolder
+			oldChar:Destroy()
+		end
 		player.Character = nil
+		player:LoadCharacter()
 	end
 end
 
-------------------//MAIN FUNCTIONS
 npcEvent.OnServerEvent:Connect(handle_npc_event)
 
-------------------//INIT
 if npcEvent.Name ~= REMOTE_NAME then
 	npcEvent.Name = REMOTE_NAME
 	npcEvent.Parent = remotesFolder

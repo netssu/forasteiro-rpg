@@ -1,10 +1,8 @@
-------------------//SERVICES
 local Players: Players = game:GetService("Players")
 local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService: UserInputService = game:GetService("UserInputService")
 local RunService: RunService = game:GetService("RunService")
 
-------------------//CONSTANTS
 local MASTER_TEAM_NAME: string = "Mestre"
 local GUI_NAME: string = "MasterGui"
 local SIDEBAR_NAME: string = "BuildSidebar"
@@ -47,7 +45,6 @@ local KEY_MAP: {[Enum.KeyCode]: number} = {
 	[Enum.KeyCode.Zero] = 10
 }
 
-------------------//VARIABLES
 local player: Player = Players.LocalPlayer
 local playerGui: PlayerGui = player:WaitForChild("PlayerGui")
 
@@ -115,7 +112,6 @@ local dragBasePartSize: Vector3? = nil
 local dragBaseCharacterCFrame: CFrame? = nil
 local lastDragSend: number = 0
 
-local gizmoHoverCount: number = 0
 local gizmoDragging: boolean = false
 local buttonsConnected: boolean = false
 local handlesConnected: boolean = false
@@ -126,19 +122,18 @@ local characterMouseDragPlaneY: number = 0
 local characterMouseDragOffset: Vector3 = Vector3.zero
 local lastCharacterMouseDragSend: number = 0
 
-------------------//FUNCTIONS
+local kind, part, targetCharacter
+
 local function is_master(): boolean
 	return player.Team ~= nil and player.Team.Name == MASTER_TEAM_NAME
 end
 
 local function get_current_camera(): Camera
 	local currentCamera = workspace.CurrentCamera
-
 	while not currentCamera do
 		task.wait()
 		currentCamera = workspace.CurrentCamera
 	end
-
 	return currentCamera
 end
 
@@ -148,33 +143,21 @@ end
 
 local function get_build_folder(): Folder?
 	local folder = workspace:FindFirstChild(BUILD_FOLDER_NAME)
-
 	if folder and folder:IsA("Folder") then
 		return folder
 	end
-
 	return nil
 end
 
 local function is_valid_selected_part(part: BasePart?): boolean
-	if not part then
-		return false
-	end
-
+	if not part then return false end
 	local buildFolder = get_build_folder()
-
-	if not buildFolder then
-		return false
-	end
-
+	if not buildFolder then return false end
 	return part.Parent == buildFolder and part:GetAttribute("IsTabletopBuildPart") == true
 end
 
 local function is_valid_selected_character(targetCharacter: Model?): boolean
-	if not targetCharacter then
-		return false
-	end
-
+	if not targetCharacter then return false end
 	local charactersFolder = workspace:FindFirstChild("Characters")
 	return charactersFolder and targetCharacter.Parent == charactersFolder
 end
@@ -187,11 +170,7 @@ end
 
 local function sanitize_text_number(text: string, fallback: number, minimum: number): number
 	local numberValue = tonumber(text)
-
-	if not numberValue then
-		return fallback
-	end
-
+	if not numberValue then return fallback end
 	return math.max(minimum, numberValue)
 end
 
@@ -213,74 +192,32 @@ local function snap_vector3(value: Vector3, stepValue: number): Vector3
 end
 
 local function vector_from_normal_id(normalId: Enum.NormalId, cframe: CFrame): Vector3
-	if normalId == Enum.NormalId.Right then
-		return cframe.RightVector
-	end
-
-	if normalId == Enum.NormalId.Left then
-		return -cframe.RightVector
-	end
-
-	if normalId == Enum.NormalId.Top then
-		return cframe.UpVector
-	end
-
-	if normalId == Enum.NormalId.Bottom then
-		return -cframe.UpVector
-	end
-
-	if normalId == Enum.NormalId.Front then
-		return cframe.LookVector
-	end
-
+	if normalId == Enum.NormalId.Right then return cframe.RightVector end
+	if normalId == Enum.NormalId.Left then return -cframe.RightVector end
+	if normalId == Enum.NormalId.Top then return cframe.UpVector end
+	if normalId == Enum.NormalId.Bottom then return -cframe.UpVector end
+	if normalId == Enum.NormalId.Front then return cframe.LookVector end
 	return -cframe.LookVector
 end
 
 local function vector_from_character_normal_id(normalId: Enum.NormalId, cframe: CFrame): Vector3
-	if normalId == Enum.NormalId.Right then
-		return cframe.RightVector
-	end
-
-	if normalId == Enum.NormalId.Left then
-		return -cframe.RightVector
-	end
-
-	if normalId == Enum.NormalId.Top then
-		return cframe.UpVector
-	end
-
-	if normalId == Enum.NormalId.Bottom then
-		return -cframe.UpVector
-	end
-
-	if normalId == Enum.NormalId.Front then
-		return cframe.LookVector
-	end
-
+	if normalId == Enum.NormalId.Right then return cframe.RightVector end
+	if normalId == Enum.NormalId.Left then return -cframe.RightVector end
+	if normalId == Enum.NormalId.Top then return cframe.UpVector end
+	if normalId == Enum.NormalId.Bottom then return -cframe.UpVector end
+	if normalId == Enum.NormalId.Front then return cframe.LookVector end
 	return -cframe.LookVector
 end
 
 local function local_axis_name_from_normal(normalId: Enum.NormalId): string
-	if normalId == Enum.NormalId.Right or normalId == Enum.NormalId.Left then
-		return "X"
-	end
-
-	if normalId == Enum.NormalId.Top or normalId == Enum.NormalId.Bottom then
-		return "Y"
-	end
-
+	if normalId == Enum.NormalId.Right or normalId == Enum.NormalId.Left then return "X" end
+	if normalId == Enum.NormalId.Top or normalId == Enum.NormalId.Bottom then return "Y" end
 	return "Z"
 end
 
 local function rotation_cframe_from_axis(axis: Enum.Axis, angle: number): CFrame
-	if axis == Enum.Axis.X then
-		return CFrame.Angles(angle, 0, 0)
-	end
-
-	if axis == Enum.Axis.Y then
-		return CFrame.Angles(0, angle, 0)
-	end
-
+	if axis == Enum.Axis.X then return CFrame.Angles(angle, 0, 0) end
+	if axis == Enum.Axis.Y then return CFrame.Angles(0, angle, 0) end
 	return CFrame.Angles(0, 0, angle)
 end
 
@@ -308,7 +245,6 @@ local function ensure_preview_part(): Part
 	part.Parent = workspace
 
 	previewPart = part
-
 	return part
 end
 
@@ -325,7 +261,6 @@ local function ensure_highlight(): Highlight
 	newHighlight.Parent = playerGui
 
 	highlight = newHighlight
-
 	return newHighlight
 end
 
@@ -342,7 +277,6 @@ local function ensure_hover_highlight(): Highlight
 	newHighlight.Parent = playerGui
 
 	hoverHighlight = newHighlight
-
 	return newHighlight
 end
 
@@ -436,12 +370,7 @@ local function read_color_from_boxes(): Color3
 	local r = sanitize_text_number(colorRBox and colorRBox.Text or "163", 163, 0)
 	local g = sanitize_text_number(colorGBox and colorGBox.Text or "162", 162, 0)
 	local b = sanitize_text_number(colorBBox and colorBBox.Text or "165", 165, 0)
-
-	return Color3.fromRGB(
-		clamp_color_channel(r),
-		clamp_color_channel(g),
-		clamp_color_channel(b)
-	)
+	return Color3.fromRGB(clamp_color_channel(r), clamp_color_channel(g), clamp_color_channel(b))
 end
 
 local function sync_color_boxes_from_part(part: BasePart): ()
@@ -455,9 +384,7 @@ local function sync_color_boxes_from_part(part: BasePart): ()
 end
 
 local function set_status(text: string): ()
-	if statusLabel then
-		statusLabel.Text = text
-	end
+	if statusLabel then statusLabel.Text = text end
 end
 
 local function get_ordered_modes(): {string}
@@ -476,39 +403,22 @@ local function get_ordered_modes(): {string}
 	for _, item in ipairs(activeModes) do
 		table.insert(ordered, item.mode)
 	end
-
 	return ordered
 end
 
 local function update_mode_buttons(): ()
-	if selectModeButton then
-		selectModeButton.BackgroundColor3 = toolMode == TOOL_MODE_SELECT and ACTIVE_BUTTON_COLOR or INACTIVE_BUTTON_COLOR
-	end
-
-	if createModeButton then
-		createModeButton.BackgroundColor3 = toolMode == TOOL_MODE_CREATE and ACTIVE_BUTTON_COLOR or INACTIVE_BUTTON_COLOR
-	end
-
-	if wallModeButton then
-		wallModeButton.BackgroundColor3 = toolMode == TOOL_MODE_WALL and ACTIVE_BUTTON_COLOR or INACTIVE_BUTTON_COLOR
-	end
-
-	if lightModeButton then
-		lightModeButton.BackgroundColor3 = toolMode == TOOL_MODE_LIGHT and ACTIVE_BUTTON_COLOR or INACTIVE_BUTTON_COLOR
-	end
+	if selectModeButton then selectModeButton.BackgroundColor3 = toolMode == TOOL_MODE_SELECT and ACTIVE_BUTTON_COLOR or INACTIVE_BUTTON_COLOR end
+	if createModeButton then createModeButton.BackgroundColor3 = toolMode == TOOL_MODE_CREATE and ACTIVE_BUTTON_COLOR or INACTIVE_BUTTON_COLOR end
+	if wallModeButton then wallModeButton.BackgroundColor3 = toolMode == TOOL_MODE_WALL and ACTIVE_BUTTON_COLOR or INACTIVE_BUTTON_COLOR end
+	if lightModeButton then lightModeButton.BackgroundColor3 = toolMode == TOOL_MODE_LIGHT and ACTIVE_BUTTON_COLOR or INACTIVE_BUTTON_COLOR end
 end
 
 local function get_root_part_for_character(character: Model): BasePart?
-	if not character then
-		return nil
-	end
-
+	if not character then return nil end
 	local rootPart = character:FindFirstChild("HumanoidRootPart")
-
 	if rootPart and rootPart:IsA("BasePart") then
 		return rootPart
 	end
-
 	return nil
 end
 
@@ -535,7 +445,6 @@ local function clear_selection(): ()
 	selectedKind = ""
 	selectedPart = nil
 	selectedCharacter = nil
-	gizmoHoverCount = 0
 	finish_gizmo_drag()
 	stop_character_mouse_drag()
 
@@ -571,9 +480,9 @@ local function update_handles_for_selection(): ()
 
 		currentHighlight.Adornee = selectedCharacter
 
-		if moveHandles then moveHandles.Adornee = nil end
+		if moveHandles then moveHandles.Adornee = rootPart end
 		if resizeHandles then resizeHandles.Adornee = nil end
-		if rotateHandles then rotateHandles.Adornee = nil end
+		if rotateHandles then rotateHandles.Adornee = rootPart end
 
 		set_status("Selecionado: personagem")
 		return
@@ -631,10 +540,11 @@ local function is_pointer_over_gui(): boolean
 
 	for _, guiObject in guiObjects do
 		if masterGui and guiObject:IsDescendantOf(masterGui) then
-			return true
+			if guiObject.BackgroundTransparency < 1 or guiObject:IsA("TextButton") or guiObject:IsA("TextBox") then
+				return true
+			end
 		end
 	end
-
 	return false
 end
 
@@ -660,18 +570,14 @@ local function build_raycast_result(): RaycastResult?
 	end
 
 	raycastParams.FilterDescendantsInstances = filterList
-
 	return workspace:Raycast(ray.Origin, ray.Direction * 4096, raycastParams)
 end
 
 local function resolve_click_target(): (string, BasePart?, Model?)
-	local raycastResult = build_raycast_result()
+	local mouse = player:GetMouse()
+	local instance = mouse.Target
 
-	if not raycastResult then
-		return "", nil, nil
-	end
-
-	local instance = raycastResult.Instance
+	if not instance then return "", nil, nil end
 
 	if instance:IsA("BasePart") then
 		local targetVal = instance:FindFirstChild("TargetCharacter")
@@ -680,13 +586,11 @@ local function resolve_click_target(): (string, BasePart?, Model?)
 		end
 
 		local buildFolder = get_build_folder()
-
 		if buildFolder and instance.Parent == buildFolder and instance:GetAttribute("IsTabletopBuildPart") == true then
 			return "Part", instance, nil
 		end
 
 		local model = instance:FindFirstAncestorOfClass("Model")
-
 		if model then
 			local charactersFolder = workspace:FindFirstChild("Characters")
 			if charactersFolder and model.Parent == charactersFolder then
@@ -700,44 +604,62 @@ end
 
 local function update_hover_highlight(): ()
 	local currentHoverHighlight = ensure_hover_highlight()
+	local hitboxesFolder = workspace:FindFirstChild("MasterHitboxes")
+
+	if hitboxesFolder then
+		for _, hb in hitboxesFolder:GetChildren() do
+			if hb:IsA("BasePart") then
+				hb.Transparency = 1
+			end
+		end
+	end
 
 	if not is_master() then
 		currentHoverHighlight.Adornee = nil
 		return
 	end
 
-	if is_pointer_over_gui() then
-		currentHoverHighlight.Adornee = nil
-		return
-	end
-
-	if gizmoHoverCount > 0 or gizmoDragging then
+	if is_pointer_over_gui() or gizmoDragging then
 		currentHoverHighlight.Adornee = nil
 		return
 	end
 
 	local canHoverParts = is_sidebar_visible() and toolMode == TOOL_MODE_SELECT
 	local canHoverCharacters = toolMode == TOOL_MODE_NONE or toolMode == TOOL_MODE_SELECT or not is_sidebar_visible()
+	local a, b, c = resolve_click_target()
 
-	local kind, part, targetCharacter = resolve_click_target()
+	kind = a
+	part = b
+	targetCharacter = c
 
-	if kind == "Part" and part and canHoverParts then
-		if selectedKind == "Part" and selectedPart == part then
+	if a == "Part" and b and canHoverParts then
+		if selectedKind == "Part" and selectedPart == b then
 			currentHoverHighlight.Adornee = nil
 			return
 		end
-
-		currentHoverHighlight.Adornee = part
+		currentHoverHighlight.Adornee = b
 		return
 	end
 
-	if kind == "Character" and targetCharacter and canHoverCharacters then
-		if selectedKind == "Character" and selectedCharacter == targetCharacter then
+	if a == "Character" and c and canHoverCharacters then
+		if hitboxesFolder then
+			for _, hb in hitboxesFolder:GetChildren() do
+				local targetVal = hb:FindFirstChild("TargetCharacter")
+				if targetVal and targetVal.Value == c then
+					hb.Transparency = 0.8
+					hb.Color = Color3.fromRGB(120, 200, 255)
+					hb.Material = Enum.Material.ForceField
+					break
+				end
+			end
+		end
+
+		if selectedKind == "Character" and selectedCharacter == c then
 			currentHoverHighlight.Adornee = nil
 			return
 		end
 
-		currentHoverHighlight.Adornee = targetCharacter
+		currentHoverHighlight.Adornee = c
 		return
 	end
 
@@ -746,11 +668,7 @@ end
 
 local function get_snapped_hit_position(): Vector3?
 	local raycastResult = build_raycast_result()
-
-	if not raycastResult then
-		return nil
-	end
-
+	if not raycastResult then return nil end
 	return snap_vector3(raycastResult.Position, gridSize)
 end
 
@@ -759,26 +677,19 @@ local function get_mouse_point_on_horizontal_plane(planeY: number): Vector3?
 	local mouseLocation = UserInputService:GetMouseLocation()
 	local ray = currentCamera:ViewportPointToRay(mouseLocation.X, mouseLocation.Y)
 
-	if math.abs(ray.Direction.Y) < 0.0001 then
-		return nil
-	end
+	if math.abs(ray.Direction.Y) < 0.0001 then return nil end
 
 	local t = (planeY - ray.Origin.Y) / ray.Direction.Y
-
-	if t <= 0 then
-		return nil
-	end
+	if t <= 0 then return nil end
 
 	return ray.Origin + ray.Direction * t
 end
 
 local function start_character_mouse_drag(targetCharacter: Model): ()
 	local rootPart = get_root_part_for_character(targetCharacter)
-
 	if not rootPart then return end
 
 	local planePoint = get_mouse_point_on_horizontal_plane(rootPart.Position.Y)
-
 	if not planePoint then return end
 
 	characterMouseDragActive = true
@@ -797,14 +708,12 @@ local function update_character_mouse_drag(): ()
 	end
 
 	local rootPart = get_root_part_for_character(characterMouseDragTarget)
-
 	if not rootPart then
 		clear_selection()
 		return
 	end
 
 	local planePoint = get_mouse_point_on_horizontal_plane(characterMouseDragPlaneY)
-
 	if not planePoint then return end
 
 	local targetPosition = Vector3.new(
@@ -815,6 +724,8 @@ local function update_character_mouse_drag(): ()
 
 	local newCFrame = CFrame.new(targetPosition) * get_rotation_only_cframe(rootPart.CFrame)
 	local nowTime = time()
+
+	rootPart.CFrame = newCFrame
 
 	if nowTime - lastCharacterMouseDragSend < DRAG_SEND_INTERVAL then return end
 
@@ -828,7 +739,6 @@ end
 
 local function get_wall_endpoint_candidates(): {Vector3}
 	local buildFolder = get_build_folder()
-
 	if not buildFolder then return {} end
 
 	local points = {}
@@ -839,10 +749,8 @@ local function get_wall_endpoint_candidates(): {Vector3}
 			local direction = child.CFrame.LookVector
 			local halfLength = child.Size.Z / 2
 			local baseY = center.Y - child.Size.Y / 2
-
 			local pointA = center - direction * halfLength
 			local pointB = center + direction * halfLength
-
 			table.insert(points, Vector3.new(pointA.X, baseY, pointA.Z))
 			table.insert(points, Vector3.new(pointB.X, baseY, pointB.Z))
 		end
@@ -862,7 +770,6 @@ local function snap_wall_point(rawPoint: Vector3): Vector3
 
 	for _, point in candidates do
 		local distance = (Vector3.new(point.X, rawPoint.Y, point.Z) - rawPoint).Magnitude
-
 		if distance <= bestDistance then
 			bestDistance = distance
 			bestPoint = Vector3.new(point.X, point.Y, point.Z)
@@ -910,7 +817,6 @@ end
 
 local function get_create_preview_cframe_and_size(): (CFrame?, Vector3?)
 	local currentPoint = get_snapped_hit_position()
-
 	if not currentPoint then return nil, nil end
 
 	if not createAnchor then
@@ -924,11 +830,9 @@ end
 
 local function get_wall_preview_cframe_and_size(): (CFrame?, Vector3?)
 	local currentPoint = get_snapped_hit_position()
-
 	if not currentPoint then return nil, nil end
 
 	currentPoint = snap_wall_point(currentPoint)
-
 	local height = math.max(1, wallHeight)
 	local thickness = math.max(0.25, wallThickness)
 
@@ -938,7 +842,6 @@ local function get_wall_preview_cframe_and_size(): (CFrame?, Vector3?)
 			currentPoint + Vector3.new(0, height / 2, 0),
 			currentPoint + Vector3.new(0, height / 2, -1)
 		)
-
 		return cframe, size
 	end
 
@@ -947,9 +850,7 @@ end
 
 local function get_light_preview_cframe_and_size(): (CFrame?, Vector3?)
 	local currentPoint = get_snapped_hit_position()
-
 	if not currentPoint then return nil, nil end
-
 	local cframe = CFrame.new(currentPoint + Vector3.new(0, createSize.Y / 2, 0))
 	return cframe, createSize
 end
@@ -989,7 +890,6 @@ local function refresh_preview(): ()
 
 	if toolMode == TOOL_MODE_CREATE then
 		local cframe, size = get_create_preview_cframe_and_size()
-
 		if cframe and size then
 			show_preview(cframe, size)
 			return
@@ -998,7 +898,6 @@ local function refresh_preview(): ()
 
 	if toolMode == TOOL_MODE_WALL then
 		local cframe, size = get_wall_preview_cframe_and_size()
-
 		if cframe and size then
 			show_preview(cframe, size)
 			return
@@ -1007,7 +906,6 @@ local function refresh_preview(): ()
 
 	if toolMode == TOOL_MODE_LIGHT then
 		local cframe, size = get_light_preview_cframe_and_size()
-
 		if cframe and size then
 			show_preview(cframe, size, true)
 			return
@@ -1159,7 +1057,6 @@ end
 
 local function handle_create_click(): ()
 	local currentPoint = get_snapped_hit_position()
-
 	if not currentPoint then return end
 
 	if not createAnchor then
@@ -1177,7 +1074,6 @@ end
 
 local function handle_wall_click(): ()
 	local currentPoint = get_snapped_hit_position()
-
 	if not currentPoint then return end
 
 	currentPoint = snap_wall_point(currentPoint)
@@ -1197,7 +1093,6 @@ end
 
 local function handle_light_click(): ()
 	local currentPoint = get_snapped_hit_position()
-
 	if not currentPoint then return end
 
 	create_current_preview_part()
@@ -1208,50 +1103,45 @@ end
 local function handle_world_left_click(): ()
 	if not is_master() then return end
 
-	if is_pointer_over_gui() or gizmoHoverCount > 0 or gizmoDragging then
+	if is_pointer_over_gui() then
 		return
 	end
 
-	local kind, part, targetCharacter = resolve_click_target()
+	if gizmoDragging then
+		return
+	end
+
 	local canSelectCharacters = toolMode == TOOL_MODE_NONE or toolMode == TOOL_MODE_SELECT or not is_sidebar_visible()
 
+	if kind == "" then
+		clear_selection()
+	end
+
 	if kind == "Character" and targetCharacter and canSelectCharacters then
-		set_selected_character(targetCharacter)
+		if selectedCharacter ~= targetCharacter then
+			set_selected_character(targetCharacter)
+		end
 		start_character_mouse_drag(targetCharacter)
 		return
 	end
 
 	if not is_sidebar_visible() then
-		if kind == "" then clear_selection() end
+		clear_selection()
 		return
 	end
 
 	apply_inputs_to_state()
 
 	if toolMode == TOOL_MODE_SELECT then
-		handle_select_click(part, nil)
-		return
+		if kind == "Part" and part then
+			handle_select_click(part, nil)
+			return
+		end
 	end
 
-	if toolMode == TOOL_MODE_CREATE then
-		handle_create_click()
-		return
-	end
-
-	if toolMode == TOOL_MODE_WALL then
-		handle_wall_click()
-		return
-	end
-
-	if toolMode == TOOL_MODE_LIGHT then
-		handle_light_click()
-		return
-	end
-
-	if kind == "" then
-		clear_selection()
-		return
-	end
+	if toolMode == TOOL_MODE_CREATE then handle_create_click() return end
+	if toolMode == TOOL_MODE_WALL then handle_wall_click() return end
+	if toolMode == TOOL_MODE_LIGHT then handle_light_click() return end
 
 	clear_selection()
 end
@@ -1272,7 +1162,6 @@ local function begin_drag(modeName: string, face: Enum.NormalId): ()
 
 	if selectedKind == "Character" and selectedCharacter and is_valid_selected_character(selectedCharacter) then
 		local rootPart = get_root_part_for_character(selectedCharacter)
-
 		if rootPart then
 			dragBaseCharacterCFrame = rootPart.CFrame
 		end
@@ -1290,8 +1179,13 @@ local function begin_rotate(axis: Enum.Axis): ()
 	dragFace = nil
 	lastDragSend = 0
 
-	if selectedPart and is_valid_selected_part(selectedPart) then
+	if selectedKind == "Part" and selectedPart and is_valid_selected_part(selectedPart) then
 		dragBasePartCFrame = selectedPart.CFrame
+	elseif selectedKind == "Character" and selectedCharacter and is_valid_selected_character(selectedCharacter) then
+		local rootPart = get_root_part_for_character(selectedCharacter)
+		if rootPart then
+			dragBasePartCFrame = rootPart.CFrame
+		end
 	end
 end
 
@@ -1315,14 +1209,12 @@ local function update_selected_part_from_drag(distance: number): ()
 
 	if dragMode == "Move" then
 		local newCFrame = dragBasePartCFrame + axisVector * snappedDistance
-
 		maybe_send_drag_update(time(), function()
 			fire_build("UpdatePart", {
 				Part = selectedPart,
 				CFrame = newCFrame,
 			})
 		end)
-
 		return
 	end
 
@@ -1361,6 +1253,11 @@ local function update_selected_character_from_drag(distance: number): ()
 	local axisVector = vector_from_character_normal_id(dragFace, dragBaseCharacterCFrame)
 	local newCFrame = dragBaseCharacterCFrame + axisVector * snappedDistance
 
+	local rootPart = get_root_part_for_character(selectedCharacter)
+	if rootPart then
+		rootPart.CFrame = newCFrame
+	end
+
 	maybe_send_drag_update(time(), function()
 		fire_build("MoveCharacter", {
 			Character = selectedCharacter,
@@ -1370,7 +1267,7 @@ local function update_selected_character_from_drag(distance: number): ()
 end
 
 local function update_selected_part_rotation(relativeAngle: number): ()
-	if not selectedPart or not is_valid_selected_part(selectedPart) or not dragBasePartCFrame or not dragAxis then
+	if not dragBasePartCFrame or not dragAxis then
 		clear_selection()
 		return
 	end
@@ -1380,12 +1277,25 @@ local function update_selected_part_rotation(relativeAngle: number): ()
 	local rotation = rotation_cframe_from_axis(dragAxis, snappedAngle)
 	local newCFrame = dragBasePartCFrame * rotation
 
-	maybe_send_drag_update(time(), function()
-		fire_build("UpdatePart", {
-			Part = selectedPart,
-			CFrame = newCFrame,
-		})
-	end)
+	if selectedKind == "Part" and selectedPart and is_valid_selected_part(selectedPart) then
+		maybe_send_drag_update(time(), function()
+			fire_build("UpdatePart", {
+				Part = selectedPart,
+				CFrame = newCFrame,
+			})
+		end)
+	elseif selectedKind == "Character" and selectedCharacter and is_valid_selected_character(selectedCharacter) then
+		local rootPart = get_root_part_for_character(selectedCharacter)
+		if rootPart then
+			rootPart.CFrame = newCFrame
+		end
+		maybe_send_drag_update(time(), function()
+			fire_build("MoveCharacter", {
+				Character = selectedCharacter,
+				CFrame = newCFrame,
+			})
+		end)
+	end
 end
 
 local function connect_handles(): ()
@@ -1395,8 +1305,6 @@ local function connect_handles(): ()
 	handlesConnected = true
 
 	if moveHandles then
-		moveHandles.MouseEnter:Connect(function() gizmoHoverCount += 1 end)
-		moveHandles.MouseLeave:Connect(function() gizmoHoverCount = math.max(0, gizmoHoverCount - 1) end)
 		moveHandles.MouseButton1Down:Connect(function(face: Enum.NormalId) begin_drag("Move", face) end)
 		moveHandles.MouseButton1Up:Connect(function() finish_gizmo_drag() end)
 		moveHandles.MouseDrag:Connect(function(face: Enum.NormalId, distance: number)
@@ -1406,8 +1314,6 @@ local function connect_handles(): ()
 	end
 
 	if resizeHandles then
-		resizeHandles.MouseEnter:Connect(function() gizmoHoverCount += 1 end)
-		resizeHandles.MouseLeave:Connect(function() gizmoHoverCount = math.max(0, gizmoHoverCount - 1) end)
 		resizeHandles.MouseButton1Down:Connect(function(face: Enum.NormalId) begin_drag("Resize", face) end)
 		resizeHandles.MouseButton1Up:Connect(function() finish_gizmo_drag() end)
 		resizeHandles.MouseDrag:Connect(function(face: Enum.NormalId, distance: number)
@@ -1416,15 +1322,11 @@ local function connect_handles(): ()
 	end
 
 	if rotateHandles then
-		rotateHandles.MouseEnter:Connect(function() gizmoHoverCount += 1 end)
-		rotateHandles.MouseLeave:Connect(function() gizmoHoverCount = math.max(0, gizmoHoverCount - 1) end)
 		rotateHandles.MouseButton1Down:Connect(function(axis: Enum.Axis) begin_rotate(axis) end)
 		rotateHandles.MouseButton1Up:Connect(function() finish_gizmo_drag() end)
 		rotateHandles.MouseDrag:Connect(function(axis: Enum.Axis, relativeAngle: number)
-			if selectedKind == "Part" then
-				dragAxis = axis
-				update_selected_part_rotation(relativeAngle)
-			end
+			dragAxis = axis
+			update_selected_part_rotation(relativeAngle)
 		end)
 	end
 end
@@ -1540,19 +1442,27 @@ local function sync_master_hitboxes(): ()
 	if not charsFolder then return end
 
 	local processed = {}
+	local hitboxesByChar = {}
+
+	for _, hb in hitboxesFolder:GetChildren() do
+		local targetVal = hb:FindFirstChild("TargetCharacter")
+		if targetVal and targetVal.Value then
+			hitboxesByChar[targetVal.Value] = hb
+		end
+	end
 
 	for _, char in charsFolder:GetChildren() do
 		if char:IsA("Model") then
 			processed[char] = true
 			local rootPart = char:FindFirstChild("HumanoidRootPart")
+
 			if rootPart then
-				local hitboxName = "HB_" .. char.Name
-				local hitbox = hitboxesFolder:FindFirstChild(hitboxName)
+				local hitbox = hitboxesByChar[char]
 
 				if not hitbox then
 					hitbox = Instance.new("Part")
-					hitbox.Name = hitboxName
-					hitbox.Size = Vector3.new(4, 7, 4)
+					hitbox.Name = "Hitbox"
+					hitbox.Size = Vector3.new(5, 8, 5)
 					hitbox.Transparency = 1
 					hitbox.CanCollide = false
 					hitbox.CanQuery = true

@@ -11,6 +11,10 @@ local player: Player = Players.LocalPlayer
 
 ------------------//FUNCTIONS
 local function hide_own_token(character: Model): ()
+	if player.Team and player.Team.Name == "Mestre" then
+		return
+	end
+
 	local tokenPart = character:FindFirstChild(ROLE_TOKEN_PART_NAME)
 
 	if not tokenPart or not tokenPart:IsA("BasePart") then

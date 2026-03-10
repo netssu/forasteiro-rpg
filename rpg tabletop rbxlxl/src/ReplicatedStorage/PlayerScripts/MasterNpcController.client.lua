@@ -1,14 +1,12 @@
-------------------//SERVICES
 local Players: Players = game:GetService("Players")
 local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService: UserInputService = game:GetService("UserInputService")
 local Workspace: Workspace = game:GetService("Workspace")
+local RunService: RunService = game:GetService("RunService")
 
-------------------//CONSTANTS
 local REMOTE_NAME: string = "MasterNpcEvent"
-local GUI_NAME: string = "MasterNpcGui"
+local GUI_NAME: string = "MasterGui"
 
-------------------//VARIABLES
 local player: Player = Players.LocalPlayer
 local playerGui: PlayerGui = player:WaitForChild("PlayerGui")
 local camera: Camera = Workspace.CurrentCamera
@@ -23,16 +21,66 @@ local isSpawnModeActive = false
 local uiConnected = false
 local guiElements = {}
 local npcRows = {}
+local renderSteppedConnection = nil
 
-------------------//FUNCTIONS
+local function update_possess_buttons()
+	for npc, row in pairs(npcRows) do
+		local btn = row:FindFirstChild("PossessBtn")
+		if btn and btn:IsA("TextButton") then
+			if player.Character == npc then
+				btn.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+				btn.Text = "Sair"
+			else
+				btn.BackgroundColor3 = Color3.fromRGB(180, 100, 20)
+				btn.Text = "Possuir"
+			end
+		end
+	end
+end
+
+local function on_character_changed()
+	local char = player.Character
+	if renderSteppedConnection then
+		renderSteppedConnection:Disconnect()
+		renderSteppedConnection = nil
+	end
+
+	update_possess_buttons()
+
+	if char then
+		local humanoid = char:WaitForChild("Humanoid", 5)
+		if humanoid then
+			camera.CameraSubject = humanoid
+
+			if char:GetAttribute("IsNPC") then
+				humanoid.AutoRotate = false
+
+				renderSteppedConnection = RunService.RenderStepped:Connect(function()
+					local rootPart = char:FindFirstChild("HumanoidRootPart")
+					if rootPart and humanoid.Health > 0 then
+						local camLook = camera.CFrame.LookVector
+						local lookAtPos = rootPart.Position + Vector3.new(camLook.X, 0, camLook.Z)
+						rootPart.CFrame = CFrame.lookAt(rootPart.Position, lookAtPos)
+					end
+				end)
+			end
+		end
+	end
+end
+
 local function map_ui()
 	local sg = playerGui:FindFirstChild(GUI_NAME)
 	if not sg then return false end
 
-	local sidebar = sg:FindFirstChild("Sidebar")
+	local sidebar = sg:FindFirstChild("NpcSidebar")
 	if not sidebar then return false end
 
+	local topBar = sg:FindFirstChild("TopBar")
+	local toggleBtn = topBar and topBar:FindFirstChild("NpcToggleButton")
+
 	guiElements.MainUI = sg
+	guiElements.Sidebar = sidebar
+	guiElements.ToggleButton = toggleBtn
 	guiElements.SpawnBtn = sidebar:FindFirstChild("SpawnBtn")
 	guiElements.UnpossessBtn = sidebar:FindFirstChild("UnpossessBtn")
 	guiElements.NpcList = sidebar:FindFirstChild("NpcList")
@@ -52,7 +100,7 @@ local function create_npc_row(npc: Model)
 	if npcRows[npc] then return end
 
 	local row = Instance.new("Frame")
-	row.Size = UDim2.new(1, 0, 0, 100)
+	row.Size = UDim2.new(1, 0, 0, 130)
 	row.BackgroundColor3 = Color3.fromRGB(20, 22, 28)
 	local corner = Instance.new("UICorner", row) corner.CornerRadius = UDim.new(0, 8)
 	local stroke = Instance.new("UIStroke", row) stroke.Color = Color3.fromRGB(60, 60, 60) stroke.Thickness = 1
@@ -68,6 +116,7 @@ local function create_npc_row(npc: Model)
 	nameLabel.TextXAlignment = Enum.TextXAlignment.Left
 
 	local possessBtn = Instance.new("TextButton", row)
+	possessBtn.Name = "PossessBtn"
 	possessBtn.Size = UDim2.new(0, 80, 0, 25)
 	possessBtn.Position = UDim2.new(1, -115, 0, 5)
 	possessBtn.BackgroundColor3 = Color3.fromRGB(180, 100, 20)
@@ -85,10 +134,10 @@ local function create_npc_row(npc: Model)
 	deleteBtn.Font = Enum.Font.GothamBold
 	Instance.new("UICorner", deleteBtn).CornerRadius = UDim.new(0, 4)
 
-	local function makeInput(name, x, w, placeholder, text)
+	local function makeInput(name, x, y, w, placeholder, text)
 		local box = Instance.new("TextBox", row)
 		box.Size = UDim2.new(0, w, 0, 25)
-		box.Position = UDim2.new(0, x, 0, 35)
+		box.Position = UDim2.new(0, x, 0, y)
 		box.BackgroundColor3 = Color3.fromRGB(15, 15, 18)
 		box.TextColor3 = Color3.fromRGB(255,255,255)
 		box.PlaceholderText = placeholder
@@ -100,11 +149,10 @@ local function create_npc_row(npc: Model)
 	end
 
 	local hum = npc:FindFirstChild("Humanoid")
-	local imageBox = makeInput("ImageId", 8, 120, "ID Imagem", npc:GetAttribute("RoleImageId") or "")
-	local speedBox = makeInput("Speed", 135, 60, "Vel", hum and hum.WalkSpeed or 16)
-	local scaleBox = makeInput("Scale", 202, 60, "Escala", npc:GetAttribute("TokenScale") or 1)
+	local imageBox = makeInput("ImageId", 8, 35, 120, "ID Imagem", npc:GetAttribute("RoleImageId") or "")
+	local speedBox = makeInput("Speed", 135, 35, 60, "Vel", hum and hum.WalkSpeed or 16)
+	local scaleBox = makeInput("Scale", 202, 35, 60, "Escala", npc:GetAttribute("TokenScale") or 1)
 
-	-- Aplica alterações automaticamente ao clicar fora (FocusLost)
 	local function sendTextBoxUpdate()
 		npcEvent:FireServer({
 			Action = "UpdateNpc",
@@ -118,7 +166,6 @@ local function create_npc_row(npc: Model)
 	speedBox.FocusLost:Connect(sendTextBoxUpdate)
 	scaleBox.FocusLost:Connect(sendTextBoxUpdate)
 
-	-- BARRA DESLIZANTE DE ROTAÇÃO (Slider)
 	local rotLabel = Instance.new("TextLabel", row)
 	rotLabel.Size = UDim2.new(0, 40, 0, 20)
 	rotLabel.Position = UDim2.new(0, 8, 0, 68)
@@ -142,7 +189,6 @@ local function create_npc_row(npc: Model)
 	sliderBtn.Text = ""
 	Instance.new("UICorner", sliderBtn).CornerRadius = UDim.new(1, 0)
 
-	-- Ajusta o slider para a rotação inicial do NPC
 	local currentRot = npc.PrimaryPart and npc.PrimaryPart.Orientation.Y or 0
 	if currentRot < 0 then currentRot = currentRot + 360 end
 	local initialPercent = currentRot / 360
@@ -150,7 +196,6 @@ local function create_npc_row(npc: Model)
 	sliderBtn.Position = UDim2.new(initialPercent, -7, 0.5, -7)
 	rotLabel.Text = math.floor(currentRot) .. "°"
 
-	-- Lógica de arrastar
 	local isDragging = false
 
 	sliderBtn.MouseButton1Down:Connect(function() isDragging = true end)
@@ -185,8 +230,29 @@ local function create_npc_row(npc: Model)
 		end
 	end)
 
+	local healthAnnotationBox = makeInput("HealthAnnotation", 8, 95, 60, "Vida", npc:GetAttribute("NpcHealthAnnotation") or "")
+	healthAnnotationBox.FocusLost:Connect(function()
+		npcEvent:FireServer({
+			Action = "UpdateNpc",
+			NPC = npc,
+			HealthAnnotation = healthAnnotationBox.Text
+		})
+	end)
+
 	possessBtn.MouseButton1Click:Connect(function()
-		npcEvent:FireServer({ Action = "Possess", NPC = npc })
+		if isSpawnModeActive then
+			isSpawnModeActive = false
+			if guiElements.SpawnBtn then
+				guiElements.SpawnBtn.Text = "Spawn: OFF"
+				guiElements.SpawnBtn.BackgroundColor3 = Color3.fromRGB(34, 36, 44)
+			end
+		end
+
+		if player.Character == npc then
+			npcEvent:FireServer({ Action = "Unpossess" })
+		else
+			npcEvent:FireServer({ Action = "Possess", NPC = npc })
+		end
 	end)
 
 	deleteBtn.MouseButton1Click:Connect(function()
@@ -195,6 +261,7 @@ local function create_npc_row(npc: Model)
 
 	npcRows[npc] = row
 	update_canvas_size()
+	update_possess_buttons()
 end
 
 local function remove_npc_row(npc)
@@ -221,6 +288,23 @@ local function on_click()
 	local result = workspace:Raycast(ray.Origin, ray.Direction * 1000, params)
 
 	if result then
+		local hit = result.Instance
+
+		-- Lógica nova para garantir que lê o modelo se você clicar pela Hitbox invisível!
+		local npcModel = hit:FindFirstAncestorOfClass("Model")
+
+		if hit.Name == "MasterHitbox" then
+			local targetVal = hit:FindFirstChild("TargetCharacter")
+			if targetVal and targetVal.Value then
+				npcModel = targetVal.Value
+			end
+		end
+
+		if npcModel and npcModel:GetAttribute("IsNPC") then
+			-- A lógica antiga sua de select_npc caso você queira fazer algo ao clicar
+			return
+		end
+
 		npcEvent:FireServer({ Action = "SpawnNpc", Position = result.Position })
 	end
 end
@@ -230,17 +314,25 @@ local function connect_ui()
 	if uiConnected then return end
 	uiConnected = true
 
-	guiElements.MainUI.Enabled = player.Team ~= nil and player.Team.Name == "Mestre"
+	if guiElements.ToggleButton then
+		guiElements.ToggleButton.MouseButton1Click:Connect(function()
+			guiElements.Sidebar.Visible = not guiElements.Sidebar.Visible
+		end)
+	end
 
-	guiElements.SpawnBtn.MouseButton1Click:Connect(function()
-		isSpawnModeActive = not isSpawnModeActive
-		guiElements.SpawnBtn.Text = isSpawnModeActive and "Spawn: ON" or "Spawn: OFF"
-		guiElements.SpawnBtn.BackgroundColor3 = isSpawnModeActive and Color3.fromRGB(80, 150, 80) or Color3.fromRGB(34, 36, 44)
-	end)
+	if guiElements.SpawnBtn then
+		guiElements.SpawnBtn.MouseButton1Click:Connect(function()
+			isSpawnModeActive = not isSpawnModeActive
+			guiElements.SpawnBtn.Text = isSpawnModeActive and "Spawn: ON" or "Spawn: OFF"
+			guiElements.SpawnBtn.BackgroundColor3 = isSpawnModeActive and Color3.fromRGB(80, 150, 80) or Color3.fromRGB(34, 36, 44)
+		end)
+	end
 
-	guiElements.UnpossessBtn.MouseButton1Click:Connect(function()
-		npcEvent:FireServer({ Action = "Unpossess" })
-	end)
+	if guiElements.UnpossessBtn then
+		guiElements.UnpossessBtn.MouseButton1Click:Connect(function()
+			npcEvent:FireServer({ Action = "Unpossess" })
+		end)
+	end
 
 	for _, child in charactersFolder:GetChildren() do
 		if child:GetAttribute("IsNPC") then
@@ -260,7 +352,6 @@ local function connect_ui()
 	end)
 end
 
-------------------//MAIN FUNCTIONS
 UserInputService.InputBegan:Connect(function(input, gp)
 	if gp then return end
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -274,11 +365,16 @@ player:GetPropertyChangedSignal("Team"):Connect(function()
 	end
 end)
 
+player:GetPropertyChangedSignal("Character"):Connect(on_character_changed)
+
 playerGui.ChildAdded:Connect(function(child)
 	if child.Name == GUI_NAME then
 		task.defer(connect_ui)
 	end
 end)
 
-------------------//INIT
 connect_ui()
+
+if player.Character then
+	task.spawn(on_character_changed)
+end
