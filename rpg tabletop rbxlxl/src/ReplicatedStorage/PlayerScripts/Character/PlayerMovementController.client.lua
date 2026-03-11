@@ -3,10 +3,10 @@ local Players: Players = game:GetService("Players")
 local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService: RunService = game:GetService("RunService")
 local UserInputService: UserInputService = game:GetService("UserInputService")
-local Workspace: Workspace = game:GetService("Workspace")
 
 ------------------//CONSTANTS
 local PLAYER_TEAM_NAME: string = "Jogador"
+local MASTER_TEAM_NAME: string = "Mestre"
 local GUI_NAME: string = "PlayerHud"
 local ASSETS_FOLDER_NAME: string = "Assets"
 local REMOTES_FOLDER_NAME: string = "Remotes"
@@ -46,10 +46,12 @@ local uiConnected: boolean = false
 
 ------------------//FUNCTIONS
 local function is_player_role(): boolean
-	if player.Team ~= nil and player.Team.Name == PLAYER_TEAM_NAME then return true end
+	if player.Team and player.Team.Name == PLAYER_TEAM_NAME then
+		return true
+	end
 
-	local char = player.Character
-	if player.Team ~= nil and player.Team.Name == "Mestre" and char and char:GetAttribute("IsNPC") then
+	local character = player.Character
+	if player.Team and player.Team.Name == MASTER_TEAM_NAME and character and character:GetAttribute("IsNPC") then
 		return true
 	end
 
@@ -65,7 +67,9 @@ local function clear_trail(): ()
 end
 
 local function update_ui(): ()
-	if not distanceLabel then return end
+	if not distanceLabel then
+		return
+	end
 
 	local distanceInMeters = currentDistance / STUDS_PER_METER
 	distanceLabel.Text = string.format("%.1f / %.1f m", distanceInMeters, MAX_DISTANCE_METERS)
@@ -131,7 +135,9 @@ local function set_turn_state(state: boolean): ()
 end
 
 local function undo_path(): ()
-	if not isMyTurn then return end
+	if not isMyTurn then
+		return
+	end
 
 	local character = player.Character
 	local rootPart = character and character:FindFirstChild("HumanoidRootPart")
@@ -161,7 +167,9 @@ end
 local function cache_ui(): ()
 	local hud = playerGui:FindFirstChild(GUI_NAME)
 
-	if not hud then return end
+	if not hud then
+		return
+	end
 
 	local main = hud:FindFirstChild("Main")
 	if main then
@@ -197,14 +205,17 @@ local function update_visibility(): ()
 	end
 end
 
-------------------//MAIN FUNCTIONS
-RunService.RenderStepped:Connect(function()
-	if not isTracking then return end
+local function on_render_stepped(): ()
+	if not isTracking then
+		return
+	end
 
 	local character = player.Character
 	local rootPart = character and character:FindFirstChild("HumanoidRootPart")
 
-	if not rootPart then return end
+	if not rootPart then
+		return
+	end
 
 	if not startCFrame or not lastPoint then
 		start_new_path(rootPart)
@@ -247,46 +258,56 @@ RunService.RenderStepped:Connect(function()
 			update_ui()
 		end
 	end
-end)
+end
 
-UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
-	if gameProcessed then return end
-	if not is_player_role() then return end
-	if is_player_spectator_enabled() then return end
-
-	if isMyTurn then
-		if input.KeyCode == Enum.KeyCode.Z then
-			undo_path()
-		end
+local function on_input_began(input: InputObject, gameProcessed: boolean): ()
+	if gameProcessed then
+		return
 	end
-end)
 
-turnEvent.OnClientEvent:Connect(function(state: boolean)
+	if not is_player_role() or is_player_spectator_enabled() then
+		return
+	end
+
+	if isMyTurn and input.KeyCode == Enum.KeyCode.Z then
+		undo_path()
+	end
+end
+
+local function on_turn_event(state: boolean): ()
 	serverTurnActive = state
 	set_turn_state(state)
-end)
+end
 
-player:GetAttributeChangedSignal(PLAYER_SPECTATOR_ATTRIBUTE_NAME):Connect(function()
+local function on_spectator_changed(): ()
 	update_visibility()
 	set_turn_state(serverTurnActive)
-end)
+end
 
-player:GetPropertyChangedSignal("Team"):Connect(update_visibility)
-
-player.CharacterAdded:Connect(function()
+local function on_character_added(): ()
 	task.wait(0.5)
 	update_visibility()
 
 	if isMyTurn then
 		set_turn_state(false)
 	end
-end)
+end
 
-playerGui.ChildAdded:Connect(function(child: Instance)
+local function on_gui_added(child: Instance): ()
 	if child.Name == GUI_NAME then
 		update_visibility()
 	end
-end)
+end
+
+------------------//MAIN FUNCTIONS
+RunService.RenderStepped:Connect(on_render_stepped)
+UserInputService.InputBegan:Connect(on_input_began)
+turnEvent.OnClientEvent:Connect(on_turn_event)
+
+player:GetAttributeChangedSignal(PLAYER_SPECTATOR_ATTRIBUTE_NAME):Connect(on_spectator_changed)
+player:GetPropertyChangedSignal("Team"):Connect(update_visibility)
+player.CharacterAdded:Connect(on_character_added)
+playerGui.ChildAdded:Connect(on_gui_added)
 
 ------------------//INIT
 update_visibility()

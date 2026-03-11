@@ -6,13 +6,14 @@ local ROLE_TOKEN_PART_NAME: string = "RoleTokenPart"
 local ROLE_TOKEN_FRONT_GUI_NAME: string = "RoleTokenFrontGui"
 local ROLE_TOKEN_BACK_GUI_NAME: string = "RoleTokenBackGui"
 local PLAYER_SPECTATOR_ATTRIBUTE_NAME: string = "PlayerSpectatorEnabled"
+local MASTER_TEAM_NAME: string = "Mestre"
 
 ------------------//VARIABLES
 local player: Player = Players.LocalPlayer
 
 ------------------//FUNCTIONS
 local function should_show_own_token(): boolean
-	if player.Team and player.Team.Name == "Mestre" then
+	if player.Team and player.Team.Name == MASTER_TEAM_NAME then
 		return true
 	end
 
@@ -66,14 +67,12 @@ local function refresh_current_character(): ()
 	end
 end
 
+------------------//MAIN FUNCTIONS
+player.CharacterAdded:Connect(watch_character)
+player:GetAttributeChangedSignal(PLAYER_SPECTATOR_ATTRIBUTE_NAME):Connect(refresh_current_character)
+player:GetPropertyChangedSignal("Team"):Connect(refresh_current_character)
+
 ------------------//INIT
 if player.Character then
 	watch_character(player.Character)
 end
-
-player.CharacterAdded:Connect(function(character: Model)
-	watch_character(character)
-end)
-
-player:GetAttributeChangedSignal(PLAYER_SPECTATOR_ATTRIBUTE_NAME):Connect(refresh_current_character)
-player:GetPropertyChangedSignal("Team"):Connect(refresh_current_character)

@@ -1,21 +1,9 @@
 ------------------//SERVICES
 local Players: Players = game:GetService("Players")
-local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
-
 
 ------------------//CONSTANTS
 local MASTER_TEAM_NAME: string = "Mestre"
 local PLAYER_TEAM_NAME: string = "Jogador"
-
-local ASSETS_FOLDER_NAME: string = "Assets"
-local REMOTES_FOLDER_NAME: string = "Remotes"
-local ROLE_IMAGE_REMOTE_NAME: string = "RoleImageEvent"
-local CHARACTERS_FOLDER_NAME: string = "Characters"
-
-local MASTER_SANITIZE_PASSES: number = 6
-local MASTER_SANITIZE_INTERVAL: number = 0.2
-local PLAYER_SANITIZE_PASSES: number = 6
-local PLAYER_SANITIZE_INTERVAL: number = 0.2
 
 local ROLE_TOKEN_PART_NAME: string = "RoleTokenPart"
 local ROLE_TOKEN_WELD_NAME: string = "RoleTokenWeld"
@@ -25,7 +13,7 @@ local ROLE_TOKEN_FRONT_IMAGE_NAME: string = "RoleTokenFrontImage"
 local ROLE_TOKEN_BACK_IMAGE_NAME: string = "RoleTokenBackImage"
 
 local ROLE_IMAGE_ATTRIBUTE_NAME: string = "RoleImageId"
-local TOKEN_FORWARD_OFFSET: number = 1.75
+local TOKEN_FORWARD_OFFSET: number = 0--1.75
 local TOKEN_THICKNESS: number = 0.05
 local TOKEN_MIN_WIDTH: number = 3
 local TOKEN_WIDTH_RATIO: number = 0.72
@@ -33,30 +21,14 @@ local TOKEN_MIN_HEIGHT: number = 5
 
 local DEFAULT_ROLE_IMAGE_ID: string = "rbxassetid://102504382273976"
 
+local MASTER_SANITIZE_PASSES: number = 6
+local MASTER_SANITIZE_INTERVAL: number = 0.2
+local PLAYER_SANITIZE_PASSES: number = 6
+local PLAYER_SANITIZE_INTERVAL: number = 0.2
+
 ------------------//VARIABLES
+local RoleManager = {}
 local sanitizeVersionByCharacter: {[Model]: number} = {}
-
-local assetsFolder: Folder = ReplicatedStorage:FindFirstChild(ASSETS_FOLDER_NAME) or Instance.new("Folder")
-assetsFolder.Name = ASSETS_FOLDER_NAME
-assetsFolder.Parent = ReplicatedStorage
-
-local remotesFolder: Folder = assetsFolder:FindFirstChild(REMOTES_FOLDER_NAME) or Instance.new("Folder")
-remotesFolder.Name = REMOTES_FOLDER_NAME
-remotesFolder.Parent = assetsFolder
-
-local roleImageEvent: RemoteEvent = remotesFolder:FindFirstChild(ROLE_IMAGE_REMOTE_NAME) :: RemoteEvent
-if not roleImageEvent then
-	roleImageEvent = Instance.new("RemoteEvent")
-	roleImageEvent.Name = ROLE_IMAGE_REMOTE_NAME
-	roleImageEvent.Parent = remotesFolder
-end
-
-local charactersFolder = workspace:FindFirstChild(CHARACTERS_FOLDER_NAME)
-if not charactersFolder then
-	charactersFolder = Instance.new("Folder")
-	charactersFolder.Name = CHARACTERS_FOLDER_NAME
-	charactersFolder.Parent = workspace
-end
 
 ------------------//FUNCTIONS
 local function get_character_role(character: Model): string
@@ -102,17 +74,7 @@ end
 
 local function destroy_master_visual_objects(character: Model): ()
 	for _, descendant in character:GetDescendants() do
-		if descendant:IsA("Accessory") then
-			descendant:Destroy()
-		elseif descendant:IsA("Shirt") then
-			descendant:Destroy()
-		elseif descendant:IsA("Pants") then
-			descendant:Destroy()
-		elseif descendant:IsA("ShirtGraphic") then
-			descendant:Destroy()
-		elseif descendant:IsA("Decal") then
-			descendant:Destroy()
-		elseif descendant:IsA("Texture") then
+		if descendant:IsA("Accessory") or descendant:IsA("Shirt") or descendant:IsA("Pants") or descendant:IsA("ShirtGraphic") or descendant:IsA("Decal") or descendant:IsA("Texture") then
 			descendant:Destroy()
 		end
 	end
@@ -120,9 +82,7 @@ end
 
 local function hide_player_visual_objects(character: Model): ()
 	for _, descendant in character:GetDescendants() do
-		if descendant:IsA("Decal") then
-			descendant.Transparency = 1
-		elseif descendant:IsA("Texture") then
+		if descendant:IsA("Decal") or descendant:IsA("Texture") then
 			descendant.Transparency = 1
 		elseif descendant:IsA("WrapLayer") then
 			descendant.Enabled = false
@@ -408,7 +368,7 @@ local function run_sanitize_loop(character: Model, totalPasses: number, interval
 	end
 end
 
-local function apply_role_state(character: Model): ()
+function RoleManager.apply_role_state(character: Model): ()
 	if not character or not character.Parent then
 		return
 	end
@@ -427,7 +387,7 @@ local function apply_role_state(character: Model): ()
 	apply_default_state(character)
 end
 
-local function on_character_added(character: Model): ()
+function RoleManager.initialize_character(character: Model): ()
 	sanitizeVersionByCharacter[character] = 0
 
 	local currentImage = character:GetAttribute(ROLE_IMAGE_ATTRIBUTE_NAME)
@@ -436,19 +396,19 @@ local function on_character_added(character: Model): ()
 	end
 
 	character:GetAttributeChangedSignal(ROLE_IMAGE_ATTRIBUTE_NAME):Connect(function()
-		apply_role_state(character)
+		RoleManager.apply_role_state(character)
 	end)
 
 	task.defer(function()
-		apply_role_state(character)
+		RoleManager.apply_role_state(character)
 	end)
 end
 
-local function on_character_removing(character: Model): ()
+function RoleManager.clear_character(character: Model): ()
 	sanitizeVersionByCharacter[character] = nil
 end
 
-local function on_role_image_request(sender: Player, payload: any): ()
+function RoleManager.process_image_request(sender: Player, payload: any): ()
 	local characterCheck = Players:GetPlayerFromCharacter(sender.Character)
 
 	if not is_master(sender.Character and sender.Character or sender) and (characterCheck and sender.Team and sender.Team.Name ~= MASTER_TEAM_NAME) then
@@ -466,42 +426,7 @@ local function on_role_image_request(sender: Player, payload: any): ()
 	local character = payload.Character
 	character:SetAttribute(ROLE_IMAGE_ATTRIBUTE_NAME, normalize_image_id(payload.ImageId))
 
-	apply_role_state(character)
+	RoleManager.apply_role_state(character)
 end
 
-local function on_player_added(player: Player): ()
-	player:GetPropertyChangedSignal("Team"):Connect(function()
-		local character = player.Character
-		if character and character.Parent == charactersFolder then
-			apply_role_state(character)
-		end
-	end)
-end
-
-------------------//MAIN FUNCTIONS
-roleImageEvent.OnServerEvent:Connect(on_role_image_request)
-
-charactersFolder.ChildAdded:Connect(function(child)
-	if child:IsA("Model") then
-		on_character_added(child)
-	end
-end)
-
-charactersFolder.ChildRemoved:Connect(function(child)
-	if child:IsA("Model") then
-		on_character_removing(child)
-	end
-end)
-
-Players.PlayerAdded:Connect(on_player_added)
-
-------------------//INIT
-for _, player in Players:GetPlayers() do
-	on_player_added(player)
-end
-
-for _, child in charactersFolder:GetChildren() do
-	if child:IsA("Model") then
-		on_character_added(child)
-	end
-end
+return RoleManager

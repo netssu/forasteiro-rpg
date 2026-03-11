@@ -5,26 +5,20 @@ local RunService: RunService = game:GetService("RunService")
 local TweenService: TweenService = game:GetService("TweenService")
 local UserInputService: UserInputService = game:GetService("UserInputService")
 
-
 ------------------//CONSTANTS
 local PLAYER_TEAM_NAME: string = "Jogador"
 local GUI_NAME: string = "PlayerHud"
-local ASSETS_FOLDER_NAME: string = "Assets"
-local REMOTES_FOLDER_NAME: string = "Remotes"
-local MODELS_FOLDER_NAME: string = "Models"
 local REMOTE_NAME: string = "DiceEvent"
-
--- ID da Fonte Cinzel
 local DICE_FONT_ID: number = 11726928121
 
 ------------------//VARIABLES
 local player: Player = Players.LocalPlayer
 local playerGui: PlayerGui = player:WaitForChild("PlayerGui")
 
-local assetsFolder: Folder = ReplicatedStorage:WaitForChild(ASSETS_FOLDER_NAME)
-local remotesFolder: Folder = assetsFolder:WaitForChild(REMOTES_FOLDER_NAME)
-local modelsFolder: Folder = assetsFolder:FindFirstChild(MODELS_FOLDER_NAME) or Instance.new("Folder")
-local diceEvent: RemoteEvent = remotesFolder:WaitForChild(REMOTE_NAME) :: RemoteEvent
+local assetsFolder: Folder = ReplicatedStorage:WaitForChild("Assets")
+local remotesFolder: Folder = assetsFolder:WaitForChild("Remotes")
+local modelsFolder: Folder = assetsFolder:WaitForChild("Models")
+local diceEvent: RemoteEvent = remotesFolder:WaitForChild(REMOTE_NAME)
 
 local inputFrame: Frame? = nil
 local inputBox: TextBox? = nil
@@ -54,6 +48,7 @@ end
 local function handle_roll_click(): ()
 	if not inputBox then return end
 	local txt = inputBox.Text
+
 	if txt == "" then return end
 
 	diceEvent:FireServer({
@@ -85,7 +80,7 @@ local function cache_ui(): ()
 				end
 
 				if inputBox then
-					inputBox.FocusLost:Connect(function(enterPressed)
+					inputBox.FocusLost:Connect(function(enterPressed: boolean)
 						if enterPressed then
 							handle_roll_click()
 						end
@@ -105,6 +100,7 @@ end
 
 local function update_visibility(): ()
 	cache_ui()
+
 	if inputFrame then
 		inputFrame.Visible = is_player_role()
 	end
@@ -153,7 +149,6 @@ local function animate_local_physics_dice(total: number, rolls: {number}, expres
 		local centerPosition = Vector3.zero
 		local validDiceCount = 0
 
-		-- Cria o número individual em cima de cada dado e soma as posições para achar o centro
 		for _, diceObj in localDice do
 			local part = diceObj.Part
 			if part and part.Parent then
@@ -186,7 +181,6 @@ local function animate_local_physics_dice(total: number, rolls: {number}, expres
 			end
 		end
 
-		-- Cria a peça central invisível para segurar o total
 		local centerAnchor: Part? = nil
 
 		if validDiceCount > 0 then
@@ -211,7 +205,7 @@ local function animate_local_physics_dice(total: number, rolls: {number}, expres
 			local bgui = Instance.new("BillboardGui")
 			bgui.Name = "ResultGui"
 			bgui.Size = UDim2.new(0, 150, 0, 80)
-			bgui.StudsOffset = Vector3.new(0, 3.5, 0) -- Fica mais alto que os números individuais
+			bgui.StudsOffset = Vector3.new(0, 3.5, 0)
 			bgui.AlwaysOnTop = true
 
 			local label = Instance.new("TextLabel")
@@ -258,7 +252,6 @@ local function animate_local_physics_dice(total: number, rolls: {number}, expres
 				end
 			end
 
-			-- Apaga a âncora central
 			if centerAnchor and centerAnchor.Parent then
 				local bgui = centerAnchor:FindFirstChild("ResultGui")
 				if bgui then
@@ -359,17 +352,7 @@ local function on_roll_result(payload: any): ()
 	end
 end
 
-------------------//MAIN FUNCTIONS
-player:GetPropertyChangedSignal("Team"):Connect(update_visibility)
-diceEvent.OnClientEvent:Connect(on_roll_result)
-
-playerGui.ChildAdded:Connect(function(child: Instance)
-	if child.Name == GUI_NAME then
-		update_visibility()
-	end
-end)
-
-UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
+local function on_input_began(input: InputObject, gameProcessed: boolean): ()
 	if gameProcessed then
 		return
 	end
@@ -381,6 +364,17 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 				inputBox.Text = ""
 			end)
 		end
+	end
+end
+
+------------------//MAIN FUNCTIONS
+player:GetPropertyChangedSignal("Team"):Connect(update_visibility)
+diceEvent.OnClientEvent:Connect(on_roll_result)
+UserInputService.InputBegan:Connect(on_input_began)
+
+playerGui.ChildAdded:Connect(function(child: Instance)
+	if child.Name == GUI_NAME then
+		update_visibility()
 	end
 end)
 

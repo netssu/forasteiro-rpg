@@ -5,17 +5,15 @@ local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage"
 ------------------//CONSTANTS
 local MASTER_TEAM_NAME: string = "Mestre"
 local GUI_NAME: string = "MasterGui"
-local ASSETS_FOLDER_NAME: string = "Assets"
-local REMOTES_FOLDER_NAME: string = "Remotes"
 local REMOTE_NAME: string = "DiceEvent"
 
 ------------------//VARIABLES
 local player: Player = Players.LocalPlayer
 local playerGui: PlayerGui = player:WaitForChild("PlayerGui")
 
-local assetsFolder: Folder = ReplicatedStorage:WaitForChild(ASSETS_FOLDER_NAME)
-local remotesFolder: Folder = assetsFolder:WaitForChild(REMOTES_FOLDER_NAME)
-local diceEvent: RemoteEvent = remotesFolder:WaitForChild(REMOTE_NAME) :: RemoteEvent
+local assetsFolder: Folder = ReplicatedStorage:WaitForChild("Assets")
+local remotesFolder: Folder = assetsFolder:WaitForChild("Remotes")
+local diceEvent: RemoteEvent = remotesFolder:WaitForChild(REMOTE_NAME)
 
 local diceFrame: Frame? = nil
 local historyContainer: ScrollingFrame? = nil
@@ -33,6 +31,7 @@ end
 local function handle_instant_roll(): ()
 	if not instantInputBox then return end
 	local txt = instantInputBox.Text
+
 	if txt == "" then return end
 
 	diceEvent:FireServer({
@@ -46,6 +45,7 @@ end
 
 local function cache_ui(): ()
 	local hud = playerGui:FindFirstChild(GUI_NAME)
+
 	if not hud then return end
 
 	diceFrame = hud:FindFirstChild("MasterDiceFrame")
@@ -66,6 +66,7 @@ end
 
 local function update_visibility(): ()
 	cache_ui()
+
 	if diceFrame then
 		diceFrame.Visible = is_master_role()
 	end
@@ -82,7 +83,8 @@ local function add_history_entry(playerName: string, expression: string, total: 
 	entry.BorderSizePixel = 0
 	entry.LayoutOrder = -entryCount
 
-	local corner = Instance.new("UICorner", entry); corner.CornerRadius = UDim.new(0, 6)
+	local corner = Instance.new("UICorner", entry) 
+	corner.CornerRadius = UDim.new(0, 6)
 
 	local nameLabel = Instance.new("TextLabel")
 	nameLabel.Size = UDim2.new(1, -10, 0, 20)
@@ -127,8 +129,11 @@ end
 ------------------//MAIN FUNCTIONS
 player:GetPropertyChangedSignal("Team"):Connect(update_visibility)
 diceEvent.OnClientEvent:Connect(on_roll_result)
-playerGui.ChildAdded:Connect(function(child)
-	if child.Name == GUI_NAME then update_visibility() end
+
+playerGui.ChildAdded:Connect(function(child: Instance)
+	if child.Name == GUI_NAME then 
+		update_visibility() 
+	end
 end)
 
 ------------------//INIT

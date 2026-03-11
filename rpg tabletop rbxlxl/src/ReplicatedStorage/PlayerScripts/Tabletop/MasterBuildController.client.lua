@@ -1,8 +1,10 @@
+------------------//SERVICES
 local Players: Players = game:GetService("Players")
 local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService: UserInputService = game:GetService("UserInputService")
 local RunService: RunService = game:GetService("RunService")
 
+------------------//CONSTANTS
 local MASTER_TEAM_NAME: string = "Mestre"
 local GUI_NAME: string = "MasterGui"
 local SIDEBAR_NAME: string = "BuildSidebar"
@@ -47,6 +49,7 @@ local KEY_MAP: {[Enum.KeyCode]: number} = {
 	[Enum.KeyCode.Zero] = 10
 }
 
+------------------//VARIABLES
 local player: Player = Players.LocalPlayer
 local playerGui: PlayerGui = player:WaitForChild("PlayerGui")
 
@@ -124,8 +127,11 @@ local characterMouseDragPlaneY: number = 0
 local characterMouseDragOffset: Vector3 = Vector3.zero
 local lastCharacterMouseDragSend: number = 0
 
-local kind, part, targetCharacter
+local kind: string = ""
+local part: BasePart? = nil
+local targetCharacter: Model? = nil
 
+------------------//FUNCTIONS
 local function is_master(): boolean
 	return player.Team ~= nil and player.Team.Name == MASTER_TEAM_NAME
 end
@@ -139,7 +145,6 @@ end
 local function can_use_character_drag(): boolean
 	return is_master() or is_player_spectator_drag_enabled()
 end
-
 
 local function get_current_camera(): Camera
 	local currentCamera = workspace.CurrentCamera
@@ -162,31 +167,30 @@ local function get_build_folder(): Folder?
 	return nil
 end
 
-local function is_valid_selected_part(part: BasePart?): boolean
-	if not part then return false end
+local function is_valid_selected_part(inst: BasePart?): boolean
+	if not inst then return false end
 	local buildFolder = get_build_folder()
 	if not buildFolder then return false end
-	return part.Parent == buildFolder and part:GetAttribute("IsTabletopBuildPart") == true
+	return inst.Parent == buildFolder and inst:GetAttribute("IsTabletopBuildPart") == true
 end
 
-local function is_valid_selected_character(targetCharacter: Model?): boolean
-	if not targetCharacter then return false end
+local function is_valid_selected_character(targetModel: Model?): boolean
+	if not targetModel then return false end
 	local charactersFolder = workspace:FindFirstChild("Characters")
-	return charactersFolder and targetCharacter.Parent == charactersFolder
+	return charactersFolder and targetModel.Parent == charactersFolder
 end
 
-local function can_drag_character(targetCharacter: Model?): boolean
-	if not targetCharacter then
+local function can_drag_character(targetModel: Model?): boolean
+	if not targetModel then
 		return false
 	end
 
 	if is_master() then
-		return is_valid_selected_character(targetCharacter)
+		return is_valid_selected_character(targetModel)
 	end
 
-	return is_player_spectator_drag_enabled() and targetCharacter == player.Character
+	return is_player_spectator_drag_enabled() and targetModel == player.Character
 end
-
 
 local function fire_build(action: string, payload: any?): ()
 	local request = payload or {}
@@ -257,21 +261,21 @@ local function ensure_preview_part(): Part
 		return previewPart
 	end
 
-	local part = Instance.new("Part")
-	part.Name = "MasterBuildPreview"
-	part.Anchored = true
-	part.CanCollide = false
-	part.CanTouch = false
-	part.CanQuery = false
-	part.Material = Enum.Material.ForceField
-	part.Color = buildColor
-	part.Transparency = PREVIEW_TRANSPARENCY
-	part.TopSurface = Enum.SurfaceType.Smooth
-	part.BottomSurface = Enum.SurfaceType.Smooth
-	part.Parent = workspace
+	local partObject = Instance.new("Part")
+	partObject.Name = "MasterBuildPreview"
+	partObject.Anchored = true
+	partObject.CanCollide = false
+	partObject.CanTouch = false
+	partObject.CanQuery = false
+	partObject.Material = Enum.Material.ForceField
+	partObject.Color = buildColor
+	partObject.Transparency = PREVIEW_TRANSPARENCY
+	partObject.TopSurface = Enum.SurfaceType.Smooth
+	partObject.BottomSurface = Enum.SurfaceType.Smooth
+	partObject.Parent = workspace
 
-	previewPart = part
-	return part
+	previewPart = partObject
+	return partObject
 end
 
 local function ensure_highlight(): Highlight
@@ -399,9 +403,9 @@ local function read_color_from_boxes(): Color3
 	return Color3.fromRGB(clamp_color_channel(r), clamp_color_channel(g), clamp_color_channel(b))
 end
 
-local function sync_color_boxes_from_part(part: BasePart): ()
-	buildColor = part.Color
-	local light = part:FindFirstChildOfClass("PointLight")
+local function sync_color_boxes_from_part(partObj: BasePart): ()
+	buildColor = partObj.Color
+	local light = partObj:FindFirstChildOfClass("PointLight")
 	if light then
 		lightRange = light.Range
 		lightBrightness = light.Brightness
@@ -439,9 +443,9 @@ local function update_mode_buttons(): ()
 	if lightModeButton then lightModeButton.BackgroundColor3 = toolMode == TOOL_MODE_LIGHT and ACTIVE_BUTTON_COLOR or INACTIVE_BUTTON_COLOR end
 end
 
-local function get_root_part_for_character(character: Model): BasePart?
-	if not character then return nil end
-	local rootPart = character:FindFirstChild("HumanoidRootPart")
+local function get_root_part_for_character(targetModel: Model): BasePart?
+	if not targetModel then return nil end
+	local rootPart = targetModel:FindFirstChild("HumanoidRootPart")
 	if rootPart and rootPart:IsA("BasePart") then
 		return rootPart
 	end
@@ -539,24 +543,24 @@ local function update_handles_for_selection(): ()
 	clear_selection()
 end
 
-local function set_selected_part(part: BasePart): ()
+local function set_selected_part(partObj: BasePart): ()
 	selectedKind = "Part"
-	selectedPart = part
+	selectedPart = partObj
 	selectedCharacter = nil
 	stop_character_mouse_drag()
 
-	if sizeXBox then sizeXBox.Text = tostring(part.Size.X) end
-	if sizeYBox then sizeYBox.Text = tostring(part.Size.Y) end
-	if sizeZBox then sizeZBox.Text = tostring(part.Size.Z) end
+	if sizeXBox then sizeXBox.Text = tostring(partObj.Size.X) end
+	if sizeYBox then sizeYBox.Text = tostring(partObj.Size.Y) end
+	if sizeZBox then sizeZBox.Text = tostring(partObj.Size.Z) end
 
-	sync_color_boxes_from_part(part)
+	sync_color_boxes_from_part(partObj)
 	update_handles_for_selection()
 end
 
-local function set_selected_character(targetCharacter: Model): ()
+local function set_selected_character(targetModel: Model): ()
 	selectedKind = "Character"
 	selectedPart = nil
-	selectedCharacter = targetCharacter
+	selectedCharacter = targetModel
 	update_handles_for_selection()
 end
 
@@ -672,7 +676,7 @@ local function update_hover_highlight(): ()
 			currentHoverHighlight.Adornee = nil
 			return
 		end
-	
+
 		if hitboxesFolder then
 			for _, hb in hitboxesFolder:GetChildren() do
 				local targetVal = hb:FindFirstChild("TargetCharacter")
@@ -716,19 +720,19 @@ local function get_mouse_point_on_horizontal_plane(planeY: number): Vector3?
 	return ray.Origin + ray.Direction * t
 end
 
-local function start_character_mouse_drag(targetCharacter: Model): ()
-	if not can_drag_character(targetCharacter) then
+local function start_character_mouse_drag(targetModel: Model): ()
+	if not can_drag_character(targetModel) then
 		return
 	end
-	
-	local rootPart = get_root_part_for_character(targetCharacter)
+
+	local rootPart = get_root_part_for_character(targetModel)
 	if not rootPart then return end
 
 	local planePoint = get_mouse_point_on_horizontal_plane(rootPart.Position.Y)
 	if not planePoint then return end
 
 	characterMouseDragActive = true
-	characterMouseDragTarget = targetCharacter
+	characterMouseDragTarget = targetModel
 	characterMouseDragPlaneY = rootPart.Position.Y
 	characterMouseDragOffset = rootPart.Position - Vector3.new(planePoint.X, rootPart.Position.Y, planePoint.Z)
 	lastCharacterMouseDragSend = 0
@@ -896,24 +900,24 @@ local function get_light_preview_cframe_and_size(): (CFrame?, Vector3?)
 end
 
 local function hide_preview(): ()
-	local part = ensure_preview_part()
-	part.Transparency = 1
-	part.CanQuery = false
+	local partObj = ensure_preview_part()
+	partObj.Transparency = 1
+	partObj.CanQuery = false
 end
 
 local function show_preview(cframe: CFrame, size: Vector3, isLight: boolean?): ()
-	local part = ensure_preview_part()
-	part.Transparency = PREVIEW_TRANSPARENCY
-	part.Size = size
-	part.CFrame = cframe
-	part.Color = buildColor
-	part.CanQuery = false
-	part.Shape = Enum.PartType.Block
+	local partObj = ensure_preview_part()
+	partObj.Transparency = PREVIEW_TRANSPARENCY
+	partObj.Size = size
+	partObj.CFrame = cframe
+	partObj.Color = buildColor
+	partObj.CanQuery = false
+	partObj.Shape = Enum.PartType.Block
 
 	if isLight then
-		part.Material = Enum.Material.Neon
+		partObj.Material = Enum.Material.Neon
 	else
-		part.Material = Enum.Material.ForceField
+		partObj.Material = Enum.Material.ForceField
 	end
 end
 
@@ -1007,21 +1011,21 @@ local function set_tool_mode(newMode: string): ()
 end
 
 local function create_current_preview_part(): ()
-	local part = ensure_preview_part()
+	local partObj = ensure_preview_part()
 
-	if part.Transparency >= 1 then
+	if partObj.Transparency >= 1 then
 		return
 	end
 
-	local kind = "Part"
-	if toolMode == TOOL_MODE_WALL then kind = "Wall" end
-	if toolMode == TOOL_MODE_LIGHT then kind = "Light" end
+	local partKind = "Part"
+	if toolMode == TOOL_MODE_WALL then partKind = "Wall" end
+	if toolMode == TOOL_MODE_LIGHT then partKind = "Light" end
 
 	fire_build("CreatePart", {
-		Size = part.Size,
-		CFrame = part.CFrame,
+		Size = partObj.Size,
+		CFrame = partObj.CFrame,
 		Color = buildColor,
-		BuildKind = kind,
+		BuildKind = partKind,
 		LightRange = lightRange,
 		LightBrightness = lightBrightness,
 	})
@@ -1079,15 +1083,15 @@ local function apply_size_to_selected_part(): ()
 	})
 end
 
-local function handle_select_click(part: BasePart?, targetCharacter: Model?): ()
-	if part then
-		set_selected_part(part)
+local function handle_select_click(partObj: BasePart?, targetModel: Model?): ()
+	if partObj then
+		set_selected_part(partObj)
 		return
 	end
 
-	if targetCharacter then
-		set_selected_character(targetCharacter)
-		start_character_mouse_drag(targetCharacter)
+	if targetModel then
+		set_selected_character(targetModel)
+		start_character_mouse_drag(targetModel)
 		return
 	end
 
@@ -1512,18 +1516,18 @@ local function sync_master_hitboxes(): ()
 		end
 	end
 
-	for _, char in charsFolder:GetChildren() do
-		if char:IsA("Model") then
-			processed[char] = true
-			local rootPart = char:FindFirstChild("HumanoidRootPart")
+	for _, charObj in charsFolder:GetChildren() do
+		if charObj:IsA("Model") then
+			processed[charObj] = true
+			local rootPart = charObj:FindFirstChild("HumanoidRootPart")
 
 			if rootPart then
-				local hitbox = hitboxesByChar[char]
+				local hitbox = hitboxesByChar[charObj]
 
 				if not hitbox then
 					hitbox = Instance.new("Part")
 					hitbox.Name = "Hitbox"
-					hitbox.Size = Vector3.new(5, 8, 5)
+					hitbox.Size = Vector3.new(5, 7, 3)
 					hitbox.Transparency = 1
 					hitbox.CanCollide = false
 					hitbox.CanQuery = true
@@ -1532,7 +1536,7 @@ local function sync_master_hitboxes(): ()
 
 					local targetVal = Instance.new("ObjectValue")
 					targetVal.Name = "TargetCharacter"
-					targetVal.Value = char
+					targetVal.Value = charObj
 					targetVal.Parent = hitbox
 
 					hitbox.Parent = hitboxesFolder

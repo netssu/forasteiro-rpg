@@ -1,46 +1,31 @@
 ------------------//SERVICES
-local Players: Players = game:GetService("Players")
-local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace: Workspace = game:GetService("Workspace")
 
 ------------------//CONSTANTS
 local MASTER_TEAM_NAME: string = "Mestre"
-local REMOTE_NAME: string = "MasterBuildEvent"
 local BUILD_FOLDER_NAME: string = "TabletopBuildParts"
-
 local MIN_PART_SIZE: number = 1
 local MAX_PART_SIZE: number = 512
 local DEFAULT_COLOR: Color3 = Color3.fromRGB(163, 162, 165)
 
 ------------------//VARIABLES
-local assetsFolder: Folder = ReplicatedStorage:WaitForChild("Assets")
-local remotesFolder: Folder = assetsFolder:WaitForChild("Remotes")
-local masterBuildEvent: RemoteEvent = remotesFolder:WaitForChild(REMOTE_NAME)
+local MasterBuildManager = {}
 
 ------------------//FUNCTIONS
-local function is_master(player: Player): boolean
-	return player.Team ~= nil and player.Team.Name == MASTER_TEAM_NAME
-end
-
-local function get_build_folder(): Folder
-	local folder = workspace:FindFirstChild(BUILD_FOLDER_NAME)
-
+local function get_build_folder(): Folder?
+	local folder = Workspace:FindFirstChild(BUILD_FOLDER_NAME)
 	if folder and folder:IsA("Folder") then
 		return folder
 	end
-
-	folder = Instance.new("Folder")
-	folder.Name = BUILD_FOLDER_NAME
-	folder.Parent = workspace
-
-	return folder
+	return nil
 end
 
 local function is_valid_build_part(inst: Instance?): boolean
 	if not inst or not inst:IsA("BasePart") then
 		return false
 	end
-
-	return inst.Parent == get_build_folder() and inst:GetAttribute("IsTabletopBuildPart") == true
+	local folder = get_build_folder()
+	return folder ~= nil and inst.Parent == folder and inst:GetAttribute("IsTabletopBuildPart") == true
 end
 
 local function sanitize_size(size: Vector3): Vector3
@@ -55,14 +40,14 @@ local function sanitize_color(color: Color3?): Color3
 	if color then
 		return color
 	end
-
 	return DEFAULT_COLOR
 end
 
-local function create_build_part(size: Vector3, cframe: CFrame, color: Color3?, buildKind: string?, lightRange: number?, lightBrightness: number?): BasePart
+local function create_build_part(size: Vector3, cframe: CFrame, color: Color3?, buildKind: string?, lightRange: number?, lightBrightness: number?): BasePart?
 	local folder = get_build_folder()
-	local kind = buildKind or "Part"
+	if not folder then return nil end
 
+	local kind = buildKind or "Part"
 	local part = Instance.new("Part")
 	part.Name = "BuildPart"
 	part.Anchored = true
@@ -76,12 +61,10 @@ local function create_build_part(size: Vector3, cframe: CFrame, color: Color3?, 
 	part.CFrame = cframe
 	part:SetAttribute("IsTabletopBuildPart", true)
 	part:SetAttribute("BuildKind", kind)
-
 	part.Shape = Enum.PartType.Block
 
 	if kind == "Light" then
 		part.Material = Enum.Material.Neon
-
 		local pointLight = Instance.new("PointLight")
 		pointLight.Color = part.Color
 		pointLight.Range = typeof(lightRange) == "number" and lightRange or 20
@@ -93,26 +76,17 @@ local function create_build_part(size: Vector3, cframe: CFrame, color: Color3?, 
 	end
 
 	part.Parent = folder
-
 	return part
 end
 
 local function update_build_part(part: BasePart, size: Vector3?, cframe: CFrame?, color: Color3?, lightRange: number?, lightBrightness: number?): ()
-	if size then
-		part.Size = sanitize_size(size)
-	end
-
-	if cframe then
-		part.CFrame = cframe
-	end
+	if size then part.Size = sanitize_size(size) end
+	if cframe then part.CFrame = cframe end
 
 	if color then
 		part.Color = color
-
 		local light = part:FindFirstChildOfClass("PointLight")
-		if light then
-			light.Color = color
-		end
+		if light then light.Color = color end
 	end
 
 	if lightRange or lightBrightness then
@@ -140,8 +114,8 @@ local function move_character_to_cframe(character: Model, targetCFrame: CFrame):
 	rootPart.CFrame = targetCFrame
 end
 
-local function on_build_request(player: Player, payload: any): ()
-	if not is_master(player) then
+function MasterBuildManager.process_request(player: Player, payload: any): ()
+	if player.Team == nil or player.Team.Name ~= MASTER_TEAM_NAME then
 		return
 	end
 
@@ -198,7 +172,7 @@ local function on_build_request(player: Player, payload: any): ()
 			return
 		end
 
-		local charactersFolder = workspace:FindFirstChild("Characters")
+		local charactersFolder = Workspace:FindFirstChild("Characters")
 		if not charactersFolder or payload.Character.Parent ~= charactersFolder then
 			return
 		end
@@ -207,8 +181,4 @@ local function on_build_request(player: Player, payload: any): ()
 	end
 end
 
-------------------//MAIN FUNCTIONS
-masterBuildEvent.OnServerEvent:Connect(on_build_request)
-
-------------------//INIT
-get_build_folder()
+return MasterBuildManager

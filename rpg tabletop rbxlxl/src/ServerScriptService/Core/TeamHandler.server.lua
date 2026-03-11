@@ -1,13 +1,13 @@
 ------------------//SERVICES
 local Players: Players = game:GetService("Players")
 local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Teams: Teams = game:GetService("Teams")
+local ServerStorage: ServerStorage = game:GetService("ServerStorage")
 
 ------------------//CONSTANTS
 local REMOTE_NAME: string = "TeamSelectEvent"
+local RETURN_TO_MENU_ACTION: string = "ReturnToMenu"
 local MASTER_TEAM_NAME: string = "Mestre"
 local PLAYER_TEAM_NAME: string = "Jogador"
-local RETURN_TO_MENU_ACTION: string = "ReturnToMenu"
 
 local VALID_TEAMS = {
 	[MASTER_TEAM_NAME] = true,
@@ -19,38 +19,9 @@ local assetsFolder: Folder = ReplicatedStorage:WaitForChild("Assets")
 local remotesFolder: Folder = assetsFolder:WaitForChild("Remotes")
 local teamSelectEvent: RemoteEvent = remotesFolder:WaitForChild(REMOTE_NAME)
 
+local TeamManager = require(ServerStorage.Modules.Game.TeamManager)
+
 ------------------//FUNCTIONS
-local function get_team_by_name(teamName: string): Team?
-	local team = Teams:FindFirstChild(teamName)
-
-	if team and team:IsA("Team") then
-		return team
-	end
-
-	return nil
-end
-
-local function set_player_team(player: Player, teamName: string): ()
-	if not VALID_TEAMS[teamName] then
-		return
-	end
-
-	local team = get_team_by_name(teamName)
-
-	if not team then
-		warn("Time não encontrado: " .. teamName)
-		return
-	end
-
-	player.Neutral = false
-	player.Team = team
-end
-
-local function return_player_to_menu(player: Player): ()
-	player.Team = nil
-	player.Neutral = true
-end
-
 local function resolve_request(request: any): (string, string?)
 	if typeof(request) == "string" then
 		if VALID_TEAMS[request] then
@@ -81,12 +52,12 @@ local function on_team_request(player: Player, request: any): ()
 	local action, teamName = resolve_request(request)
 
 	if action == "SetRole" and teamName then
-		set_player_team(player, teamName)
+		TeamManager.set_player_team(player, teamName)
 		return
 	end
 
 	if action == RETURN_TO_MENU_ACTION then
-		return_player_to_menu(player)
+		TeamManager.return_player_to_menu(player)
 	end
 end
 
