@@ -1,5 +1,4 @@
 ------------------//SERVICES
-local Workspace: Workspace = game:GetService("Workspace")
 
 ------------------//CONSTANTS
 local MASTER_TEAM_NAME: string = "Mestre"
@@ -13,7 +12,7 @@ local MasterBuildManager = {}
 
 ------------------//FUNCTIONS
 local function get_build_folder(): Folder?
-	local folder = Workspace:FindFirstChild(BUILD_FOLDER_NAME)
+	local folder = workspace:FindFirstChild(BUILD_FOLDER_NAME)
 	if folder and folder:IsA("Folder") then
 		return folder
 	end
@@ -114,6 +113,63 @@ local function move_character_to_cframe(character: Model, targetCFrame: CFrame):
 	rootPart.CFrame = targetCFrame
 end
 
+local function slice_wall(wallCFrame, wallSize, doorCFrame, doorSize)
+	local localDoor = wallCFrame:ToObjectSpace(doorCFrame)
+
+	local extX = math.abs(localDoor.RightVector.X) * doorSize.X/2 + math.abs(localDoor.UpVector.X) * doorSize.Y/2 + math.abs(localDoor.LookVector.X) * doorSize.Z/2
+	local extY = math.abs(localDoor.RightVector.Y) * doorSize.X/2 + math.abs(localDoor.UpVector.Y) * doorSize.Y/2 + math.abs(localDoor.LookVector.Y) * doorSize.Z/2
+	local extZ = math.abs(localDoor.RightVector.Z) * doorSize.X/2 + math.abs(localDoor.UpVector.Z) * doorSize.Y/2 + math.abs(localDoor.LookVector.Z) * doorSize.Z/2
+
+	if math.abs(localDoor.Position.X) > wallSize.X/2 + extX then return {{CFrame = wallCFrame, Size = wallSize}} end
+	if math.abs(localDoor.Position.Y) > wallSize.Y/2 + extY then return {{CFrame = wallCFrame, Size = wallSize}} end
+	if math.abs(localDoor.Position.Z) > wallSize.Z/2 + extZ then return {{CFrame = wallCFrame, Size = wallSize}} end
+
+	local dMin = localDoor.Position.Z - extZ
+	local dMax = localDoor.Position.Z + extZ
+	local wMin = -wallSize.Z/2
+	local wMax = wallSize.Z/2
+
+	local iMin = math.max(wMin, dMin)
+	local iMax = math.min(wMax, dMax)
+
+	if iMin >= iMax then return {{CFrame = wallCFrame, Size = wallSize}} end
+
+	local parts = {}
+	if wMin < iMin then
+		local len = iMin - wMin
+		local centerZ = wMin + len/2
+		table.insert(parts, {Size = Vector3.new(wallSize.X, wallSize.Y, len), CFrame = wallCFrame * CFrame.new(0, 0, centerZ)})
+	end
+
+	if iMax < wMax then
+		local len = wMax - iMax
+		local centerZ = iMax + len/2
+		table.insert(parts, {Size = Vector3.new(wallSize.X, wallSize.Y, len), CFrame = wallCFrame * CFrame.new(0, 0, centerZ)})
+	end
+
+	local holeTopY = localDoor.Position.Y + extY
+	local holeBottomY = localDoor.Position.Y - extY
+	local wallTopY = wallSize.Y/2
+	local wallBottomY = -wallSize.Y/2
+
+	local len = iMax - iMin
+	local centerZ = (iMin + iMax) / 2
+
+	if holeTopY < wallTopY then
+		local topHeight = wallTopY - holeTopY
+		local centerY = holeTopY + topHeight/2
+		table.insert(parts, {Size = Vector3.new(wallSize.X, topHeight, len), CFrame = wallCFrame * CFrame.new(0, centerY, centerZ)})
+	end
+
+	if holeBottomY > wallBottomY then
+		local botHeight = holeBottomY - wallBottomY
+		local botCenterY = wallBottomY + botHeight/2
+		table.insert(parts, {Size = Vector3.new(wallSize.X, botHeight, len), CFrame = wallCFrame * CFrame.new(0, botCenterY, centerZ)})
+	end
+
+	return parts
+end
+
 function MasterBuildManager.process_request(player: Player, payload: any): ()
 	if player.Team == nil or player.Team.Name ~= MASTER_TEAM_NAME then
 		return
@@ -142,9 +198,10 @@ function MasterBuildManager.process_request(player: Player, payload: any): ()
 	if action == "CreateRoomParts" then
 		if typeof(payload.Parts) ~= "table" then return end
 		local color = typeof(payload.Color) == "Color3" and payload.Color or nil
+		local roomId = typeof(payload.RoomId) == "string" and payload.RoomId or nil
 
 		for _, partData in payload.Parts do
-			create_build_part(
+			local p = create_build_part(
 				partData.Size, 
 				partData.CFrame, 
 				color, 
@@ -152,7 +209,48 @@ function MasterBuildManager.process_request(player: Player, payload: any): ()
 				nil, 
 				nil
 			)
+			if p and roomId then p:SetAttribute("RoomId", roomId) end
 		end
+
+		if typeof(payload.Doors) == "table" then
+			local folder = get_build_folder()
+			if folder then
+				local raycastParams = RaycastParams.new()
+				raycastParams.FilterType = Enum.RaycastFilterType.Include
+				raycastParams.FilterDescendantsInstances = {folder}
+
+				for _, door in payload.Doors do
+					local hitParts = {}
+
+					-- Lança 4 Raycasts a partir do centro da porta para os lados e frente/tras procurando paredes velhas
+					local dirs = { door.CFrame.RightVector, -door.CFrame.RightVector, door.CFrame.LookVector, -door.CFrame.LookVector }
+					for _, dir in dirs do
+						local result = workspace:Raycast(door.CFrame.Position, dir * 4, raycastParams)
+						if result and result.Instance and result.Instance:GetAttribute("BuildKind") == "Wall" and result.Instance:GetAttribute("RoomId") ~= roomId then
+							hitParts[result.Instance] = true
+						end
+					end
+
+					for existingPart, _ in hitParts do
+						-- Projeta perfeitamente a porta no espaço local da parede pra forçar o corte
+						local localPos = existingPart.CFrame:ToObjectSpace(door.CFrame).Position
+						local projectedDoorCFrame = existingPart.CFrame * CFrame.new(0, localPos.Y, localPos.Z) * (existingPart.CFrame:Inverse() * door.CFrame).Rotation
+
+						local sliced = slice_wall(existingPart.CFrame, existingPart.Size, projectedDoorCFrame, door.Size)
+
+						if #sliced ~= 1 or sliced[1].Size ~= existingPart.Size then
+							local oldRoomId = existingPart:GetAttribute("RoomId")
+							for _, s in sliced do
+								local p = create_build_part(s.Size, s.CFrame, existingPart.Color, "Wall", nil, nil)
+								if p and oldRoomId then p:SetAttribute("RoomId", oldRoomId) end
+							end
+							existingPart:Destroy()
+						end
+					end
+				end
+			end
+		end
+
 		return
 	end
 
@@ -180,7 +278,19 @@ function MasterBuildManager.process_request(player: Player, payload: any): ()
 			return
 		end
 
-		delete_build_part(part)
+		local roomId = part:GetAttribute("RoomId")
+		if roomId then
+			local folder = get_build_folder()
+			if folder then
+				for _, child in folder:GetChildren() do
+					if child:GetAttribute("RoomId") == roomId then
+						delete_build_part(child)
+					end
+				end
+			end
+		else
+			delete_build_part(part)
+		end
 		return
 	end
 
@@ -189,7 +299,7 @@ function MasterBuildManager.process_request(player: Player, payload: any): ()
 			return
 		end
 
-		local charactersFolder = Workspace:FindFirstChild("Characters")
+		local charactersFolder = workspace:FindFirstChild("Characters")
 		if not charactersFolder or payload.Character.Parent ~= charactersFolder then
 			return
 		end

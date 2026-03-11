@@ -3,6 +3,7 @@ local Players: Players = game:GetService("Players")
 local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService: UserInputService = game:GetService("UserInputService")
 local RunService: RunService = game:GetService("RunService")
+local HttpService: HttpService = game:GetService("HttpService")
 
 ------------------//CONSTANTS
 local MASTER_TEAM_NAME: string = "Mestre"
@@ -16,6 +17,7 @@ local TOOL_MODE_NONE: string = ""
 local TOOL_MODE_SELECT: string = "Select"
 local TOOL_MODE_CREATE: string = "Create"
 local TOOL_MODE_WALL: string = "Wall"
+local TOOL_MODE_ROOM: string = "Room"
 local TOOL_MODE_LIGHT: string = "Light"
 
 local DEFAULT_GRID_SIZE: number = 1
@@ -57,6 +59,8 @@ local assetsFolder: Folder = ReplicatedStorage:WaitForChild("Assets")
 local remotesFolder: Folder = assetsFolder:WaitForChild("Remotes")
 local masterBuildEvent: RemoteEvent = remotesFolder:WaitForChild(REMOTE_NAME)
 
+local RoomBuilder = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Game"):WaitForChild("RoomBuilder"))
+
 local masterGui: ScreenGui? = nil
 local topBar: Frame? = nil
 local buildToggleButton: TextButton? = nil
@@ -66,6 +70,7 @@ local buildBody: Frame? = nil
 local selectModeButton: TextButton? = nil
 local createModeButton: TextButton? = nil
 local wallModeButton: TextButton? = nil
+local roomModeButton: TextButton? = nil
 local lightModeButton: TextButton? = nil
 local deleteButton: TextButton? = nil
 local applySizeButton: TextButton? = nil
@@ -73,6 +78,10 @@ local applyColorButton: TextButton? = nil
 local wallHeightMinusButton: TextButton? = nil
 local wallHeightPlusButton: TextButton? = nil
 local statusLabel: TextLabel? = nil
+
+local roomSettingsFrame: Frame? = nil
+local roomFloorButton: TextButton? = nil
+local roomCeilingButton: TextButton? = nil
 
 local sizeXBox: TextBox? = nil
 local sizeYBox: TextBox? = nil
@@ -95,7 +104,11 @@ local buildColor: Color3 = DEFAULT_COLOR
 local lightRange: number = 20
 local lightBrightness: number = 2
 
+local createWithFloor: boolean = true
+local createWithCeiling: boolean = true
+
 local previewPart: Part? = nil
+local roomPreviewParts: {Part} = {}
 local highlight: Highlight? = nil
 local hoverHighlight: Highlight? = nil
 local moveHandles: Handles? = nil
@@ -361,6 +374,7 @@ local function cache_gui_objects(): ()
 	selectModeButton = buildBody and buildBody:FindFirstChild("SelectModeButton") or nil
 	createModeButton = buildBody and buildBody:FindFirstChild("CreateModeButton") or nil
 	wallModeButton = buildBody and buildBody:FindFirstChild("WallModeButton") or nil
+	roomModeButton = buildBody and buildBody:FindFirstChild("RoomModeButton") or nil
 	lightModeButton = buildBody and buildBody:FindFirstChild("LightModeButton") or nil
 	deleteButton = buildBody and buildBody:FindFirstChild("DeleteButton") or nil
 	applySizeButton = buildBody and buildBody:FindFirstChild("ApplySizeButton") or nil
@@ -368,6 +382,10 @@ local function cache_gui_objects(): ()
 	wallHeightMinusButton = buildBody and buildBody:FindFirstChild("WallHeightMinusButton") or nil
 	wallHeightPlusButton = buildBody and buildBody:FindFirstChild("WallHeightPlusButton") or nil
 	statusLabel = buildBody and buildBody:FindFirstChild("StatusLabel") or nil
+
+	roomSettingsFrame = buildBody and buildBody:FindFirstChild("RoomSettingsFrame") or nil
+	roomFloorButton = roomSettingsFrame and roomSettingsFrame:FindFirstChild("RoomFloorButton") or nil
+	roomCeilingButton = roomSettingsFrame and roomSettingsFrame:FindFirstChild("RoomCeilingButton") or nil
 
 	sizeXBox = buildBody and buildBody:FindFirstChild("SizeXBox") or nil
 	sizeYBox = buildBody and buildBody:FindFirstChild("SizeYBox") or nil
@@ -394,6 +412,15 @@ local function sync_boxes_from_state(): ()
 	if colorBBox then colorBBox.Text = tostring(clamp_color_channel(buildColor.B * 255)) end
 	if lightRangeBox then lightRangeBox.Text = tostring(lightRange) end
 	if lightBrightnessBox then lightBrightnessBox.Text = tostring(lightBrightness) end
+
+	if roomFloorButton then
+		roomFloorButton.Text = createWithFloor and "Chão: SIM" or "Chão: NÃO"
+		roomFloorButton.BackgroundColor3 = createWithFloor and ACTIVE_BUTTON_COLOR or INACTIVE_BUTTON_COLOR
+	end
+	if roomCeilingButton then
+		roomCeilingButton.Text = createWithCeiling and "Teto: SIM" or "Teto: NÃO"
+		roomCeilingButton.BackgroundColor3 = createWithCeiling and ACTIVE_BUTTON_COLOR or INACTIVE_BUTTON_COLOR
+	end
 end
 
 local function read_color_from_boxes(): Color3
@@ -423,6 +450,7 @@ local function get_ordered_modes(): {string}
 	if selectModeButton then table.insert(activeModes, {btn = selectModeButton, mode = TOOL_MODE_SELECT}) end
 	if createModeButton then table.insert(activeModes, {btn = createModeButton, mode = TOOL_MODE_CREATE}) end
 	if wallModeButton then table.insert(activeModes, {btn = wallModeButton, mode = TOOL_MODE_WALL}) end
+	if roomModeButton then table.insert(activeModes, {btn = roomModeButton, mode = TOOL_MODE_ROOM}) end
 	if lightModeButton then table.insert(activeModes, {btn = lightModeButton, mode = TOOL_MODE_LIGHT}) end
 
 	table.sort(activeModes, function(a, b)
@@ -440,6 +468,7 @@ local function update_mode_buttons(): ()
 	if selectModeButton then selectModeButton.BackgroundColor3 = toolMode == TOOL_MODE_SELECT and ACTIVE_BUTTON_COLOR or INACTIVE_BUTTON_COLOR end
 	if createModeButton then createModeButton.BackgroundColor3 = toolMode == TOOL_MODE_CREATE and ACTIVE_BUTTON_COLOR or INACTIVE_BUTTON_COLOR end
 	if wallModeButton then wallModeButton.BackgroundColor3 = toolMode == TOOL_MODE_WALL and ACTIVE_BUTTON_COLOR or INACTIVE_BUTTON_COLOR end
+	if roomModeButton then roomModeButton.BackgroundColor3 = toolMode == TOOL_MODE_ROOM and ACTIVE_BUTTON_COLOR or INACTIVE_BUTTON_COLOR end
 	if lightModeButton then lightModeButton.BackgroundColor3 = toolMode == TOOL_MODE_LIGHT and ACTIVE_BUTTON_COLOR or INACTIVE_BUTTON_COLOR end
 end
 
@@ -590,6 +619,7 @@ local function build_raycast_result(): RaycastResult?
 
 	if player.Character then table.insert(filterList, player.Character) end
 	if previewPart then table.insert(filterList, previewPart) end
+	for _, p in roomPreviewParts do table.insert(filterList, p) end
 
 	local canSelectCharacters = toolMode == TOOL_MODE_NONE or toolMode == TOOL_MODE_SELECT or not is_sidebar_visible()
 	if not canSelectCharacters then
@@ -899,10 +929,15 @@ local function get_light_preview_cframe_and_size(): (CFrame?, Vector3?)
 	return cframe, createSize
 end
 
+local function hide_room_preview(): ()
+	for _, p in roomPreviewParts do p.Transparency = 1 end
+end
+
 local function hide_preview(): ()
 	local partObj = ensure_preview_part()
 	partObj.Transparency = 1
 	partObj.CanQuery = false
+	hide_room_preview()
 end
 
 local function show_preview(cframe: CFrame, size: Vector3, isLight: boolean?): ()
@@ -921,6 +956,60 @@ local function show_preview(cframe: CFrame, size: Vector3, isLight: boolean?): (
 	end
 end
 
+local function refresh_room_preview(): ()
+	local currentPoint = get_snapped_hit_position()
+	if not currentPoint then
+		hide_room_preview()
+		return
+	end
+
+	local raycastResult = build_raycast_result()
+	local exactPos = raycastResult and raycastResult.Position or snap_wall_point(currentPoint)
+
+	local isShiftHeld = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+
+	local partsData, _ = RoomBuilder.get_room_data(
+		exactPos, 
+		gridSize, 
+		wallHeight, 
+		wallThickness, 
+		4, 7.5, 
+		createWithFloor, 
+		createWithCeiling, 
+		isShiftHeld
+	)
+
+	if #partsData == 0 then
+		hide_room_preview()
+		return
+	end
+
+	for i = #roomPreviewParts + 1, #partsData do
+		local p = Instance.new("Part")
+		p.Name = "MasterBuildRoomPreview"
+		p.Anchored = true
+		p.CanCollide = false
+		p.CanQuery = false
+		p.Material = Enum.Material.ForceField
+		p.TopSurface = Enum.SurfaceType.Smooth
+		p.BottomSurface = Enum.SurfaceType.Smooth
+		p.Parent = workspace
+		table.insert(roomPreviewParts, p)
+	end
+
+	for i, p in ipairs(roomPreviewParts) do
+		if i <= #partsData then
+			local data = partsData[i]
+			p.Size = data.Size
+			p.CFrame = data.CFrame
+			p.Color = buildColor
+			p.Transparency = PREVIEW_TRANSPARENCY
+		else
+			p.Transparency = 1
+		end
+	end
+end
+
 local function refresh_preview(): ()
 	if not is_master() or not is_sidebar_visible() then
 		hide_preview()
@@ -933,6 +1022,7 @@ local function refresh_preview(): ()
 	end
 
 	if toolMode == TOOL_MODE_CREATE then
+		hide_room_preview()
 		local cframe, size = get_create_preview_cframe_and_size()
 		if cframe and size then
 			show_preview(cframe, size)
@@ -941,6 +1031,7 @@ local function refresh_preview(): ()
 	end
 
 	if toolMode == TOOL_MODE_WALL then
+		hide_room_preview()
 		local cframe, size = get_wall_preview_cframe_and_size()
 		if cframe and size then
 			show_preview(cframe, size)
@@ -948,7 +1039,14 @@ local function refresh_preview(): ()
 		end
 	end
 
+	if toolMode == TOOL_MODE_ROOM then
+		ensure_preview_part().Transparency = 1 
+		refresh_room_preview()
+		return
+	end
+
 	if toolMode == TOOL_MODE_LIGHT then
+		hide_room_preview()
 		local cframe, size = get_light_preview_cframe_and_size()
 		if cframe and size then
 			show_preview(cframe, size, true)
@@ -981,12 +1079,17 @@ end
 local function set_tool_mode(newMode: string): ()
 	createAnchor = nil
 	wallAnchor = nil
+	RoomBuilder.reset()
 	clear_selection()
 
 	if toolMode == newMode then
 		toolMode = TOOL_MODE_NONE
 	else
 		toolMode = newMode
+	end
+
+	if roomSettingsFrame then
+		roomSettingsFrame.Visible = (toolMode == TOOL_MODE_ROOM)
 	end
 
 	if toolMode == TOOL_MODE_NONE then
@@ -997,6 +1100,8 @@ local function set_tool_mode(newMode: string): ()
 		set_status("Modo criação 3D")
 	elseif toolMode == TOOL_MODE_WALL then
 		set_status("Modo parede")
+	elseif toolMode == TOOL_MODE_ROOM then
+		set_status("Modo sala")
 	elseif toolMode == TOOL_MODE_LIGHT then
 		set_status("Modo luz")
 		if colorRBox then colorRBox.Text = tostring(math.floor(DEFAULT_LIGHT_COLOR.R * 255)) end
@@ -1135,6 +1240,60 @@ local function handle_wall_click(): ()
 	refresh_preview()
 end
 
+local function handle_room_click(): ()
+	local currentPoint = get_snapped_hit_position()
+	if not currentPoint then return end
+	currentPoint = snap_wall_point(currentPoint)
+
+	if not RoomBuilder.Anchor then
+		RoomBuilder.Anchor = currentPoint
+		set_status("Sala: escolha o ponto final (Segure Shift para portas)")
+		refresh_preview()
+		return
+	end
+
+	local raycastResult = build_raycast_result()
+	local exactPos = raycastResult and raycastResult.Position or snap_wall_point(currentPoint)
+	local isShiftHeld = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+
+	local _, hoveringDoor = RoomBuilder.get_room_data(
+		exactPos, 
+		gridSize, 
+		wallHeight, 
+		wallThickness, 
+		4, 7.5, 
+		createWithFloor, 
+		createWithCeiling, 
+		isShiftHeld
+	)
+
+	if isShiftHeld then
+		if not RoomBuilder.LockedB then
+			RoomBuilder.LockedB = currentPoint
+		end
+		if hoveringDoor then
+			RoomBuilder.add_door(hoveringDoor.CFrame, hoveringDoor.Size)
+			set_status("Sala: porta adicionada (solte Shift para criar)")
+		end
+		refresh_preview()
+		return
+	end
+
+	local finalParts, _ = RoomBuilder.get_room_data(exactPos, gridSize, wallHeight, wallThickness, 4, 7.5, createWithFloor, createWithCeiling, false)
+
+	local roomId = HttpService:GenerateGUID(false)
+	fire_build("CreateRoomParts", {
+		RoomId = roomId,
+		Parts = finalParts,
+		Doors = RoomBuilder.Doors,
+		Color = buildColor
+	})
+
+	RoomBuilder.reset()
+	set_status("Sala criada")
+	refresh_preview()
+end
+
 local function handle_light_click(): ()
 	local currentPoint = get_snapped_hit_position()
 	if not currentPoint then return end
@@ -1196,6 +1355,11 @@ local function handle_world_left_click(): ()
 
 	if toolMode == TOOL_MODE_WALL then
 		handle_wall_click()
+		return
+	end
+
+	if toolMode == TOOL_MODE_ROOM then
+		handle_room_click()
 		return
 	end
 
@@ -1404,6 +1568,7 @@ local function connect_buttons(): ()
 		if not buildSidebar.Visible then
 			createAnchor = nil
 			wallAnchor = nil
+			RoomBuilder.reset()
 
 			if selectedKind ~= "Character" then
 				clear_selection()
@@ -1419,8 +1584,24 @@ local function connect_buttons(): ()
 	if selectModeButton then selectModeButton.MouseButton1Click:Connect(function() set_tool_mode(TOOL_MODE_SELECT) end) end
 	if createModeButton then createModeButton.MouseButton1Click:Connect(function() set_tool_mode(TOOL_MODE_CREATE) end) end
 	if wallModeButton then wallModeButton.MouseButton1Click:Connect(function() set_tool_mode(TOOL_MODE_WALL) end) end
+	if roomModeButton then roomModeButton.MouseButton1Click:Connect(function() set_tool_mode(TOOL_MODE_ROOM) end) end
 	if lightModeButton then lightModeButton.MouseButton1Click:Connect(function() set_tool_mode(TOOL_MODE_LIGHT) end) end
 	if deleteButton then deleteButton.MouseButton1Click:Connect(function() delete_selected_target() end) end
+
+	if roomFloorButton then
+		roomFloorButton.MouseButton1Click:Connect(function()
+			createWithFloor = not createWithFloor
+			sync_boxes_from_state()
+			refresh_preview()
+		end)
+	end
+	if roomCeilingButton then
+		roomCeilingButton.MouseButton1Click:Connect(function()
+			createWithCeiling = not createWithCeiling
+			sync_boxes_from_state()
+			refresh_preview()
+		end)
+	end
 
 	if applySizeButton then
 		applySizeButton.MouseButton1Click:Connect(function()
@@ -1481,6 +1662,7 @@ end
 local function reset_when_role_changes(): ()
 	createAnchor = nil
 	wallAnchor = nil
+	RoomBuilder.reset()
 	clear_selection()
 	hide_preview()
 end
@@ -1567,6 +1749,13 @@ end)
 UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
 	if gameProcessed then return end
 
+	if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
+		if toolMode == TOOL_MODE_ROOM and RoomBuilder.Anchor then
+			RoomBuilder.LockedB = get_snapped_hit_position()
+			refresh_preview()
+		end
+	end
+
 	local keyIndex = KEY_MAP[input.KeyCode]
 	if keyIndex and is_master() and is_sidebar_visible() then
 		local orderedModes = get_ordered_modes()
@@ -1591,7 +1780,9 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 	if input.KeyCode == Enum.KeyCode.Escape then
 		createAnchor = nil
 		wallAnchor = nil
+		RoomBuilder.reset()
 		clear_selection()
+		set_status("Pre-visualização cancelada")
 		refresh_preview()
 		return
 	end
@@ -1616,11 +1807,30 @@ UserInputService.InputEnded:Connect(function(input: InputObject)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
 		stop_character_mouse_drag()
 	end
+
+	if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
+		if toolMode == TOOL_MODE_ROOM and RoomBuilder.Anchor and RoomBuilder.LockedB then
+			local finalParts, _ = RoomBuilder.get_room_data(RoomBuilder.LockedB, gridSize, wallHeight, wallThickness, 4, 7.5, createWithFloor, createWithCeiling, false)
+
+			local roomId = HttpService:GenerateGUID(false)
+			fire_build("CreateRoomParts", {
+				RoomId = roomId,
+				Parts = finalParts,
+				Doors = RoomBuilder.Doors,
+				Color = buildColor
+			})
+
+			RoomBuilder.reset()
+			set_status("Sala criada")
+			refresh_preview()
+		end
+	end
 end)
 
 player:GetAttributeChangedSignal(PLAYER_SPECTATOR_ATTRIBUTE_NAME):Connect(function()
 	createAnchor = nil
 	wallAnchor = nil
+	RoomBuilder.reset()
 	clear_selection()
 	clear_hover_highlight()
 	hide_preview()

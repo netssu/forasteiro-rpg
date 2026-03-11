@@ -1,12 +1,12 @@
 ------------------//SERVICES
-local Workspace: Workspace = game:GetService("Workspace")
+
 
 ------------------//CONSTANTS
 local TRAIL_FOLDER_NAME: string = "PlayerTrails"
 
 ------------------//VARIABLES
 local MovementManager = {}
-local trailsFolder: Folder = Workspace:WaitForChild(TRAIL_FOLDER_NAME)
+local trailsFolder: Folder = workspace:WaitForChild(TRAIL_FOLDER_NAME)
 
 ------------------//FUNCTIONS
 local function get_player_trail_folder(player: Player): Folder

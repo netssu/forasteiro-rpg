@@ -40,13 +40,17 @@ function DiceManager.parse_and_roll(expression: string): any
 		modString = tostring(mod)
 	end
 
-	local formattedExpression = tostring(count) .. "d" .. tostring(sides) .. modString
+	local baseExpression = tostring(count) .. "d" .. tostring(sides)
+	local formattedExpression = baseExpression .. modString
+	local rollsString = "(" .. table.concat(rolls, ",") .. ")"
+	local detailString = baseExpression .. " = " .. rollsString .. modString .. " = " .. tostring(total)
 
 	return {
 		Total = total,
 		Rolls = rolls,
 		Expression = formattedExpression,
-		Mod = mod
+		Mod = mod,
+		DetailString = detailString
 	}
 end
 

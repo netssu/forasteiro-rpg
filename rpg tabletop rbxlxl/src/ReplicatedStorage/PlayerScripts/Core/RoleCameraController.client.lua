@@ -197,7 +197,7 @@ local function update_spectator_toggle_button(): ()
 		return
 	end
 
-	local button = topBar:FindFirstChild(PLAYER_SPECTATOR_BUTTON_NAME)
+	local button = playerGui:FindFirstChild(PLAYER_SPECTATOR_BUTTON_NAME,true)
 	if not button then
 		button = Instance.new("TextButton")
 		button.Name = PLAYER_SPECTATOR_BUTTON_NAME

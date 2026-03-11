@@ -2,7 +2,6 @@
 local Players: Players = game:GetService("Players")
 local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService: UserInputService = game:GetService("UserInputService")
-local Workspace: Workspace = game:GetService("Workspace")
 local RunService: RunService = game:GetService("RunService")
 
 ------------------//CONSTANTS
@@ -12,13 +11,13 @@ local GUI_NAME: string = "MasterGui"
 ------------------//VARIABLES
 local player: Player = Players.LocalPlayer
 local playerGui: PlayerGui = player:WaitForChild("PlayerGui")
-local camera: Camera = Workspace.CurrentCamera
+local camera: Camera = workspace.CurrentCamera
 
 local assetsFolder: Folder = ReplicatedStorage:WaitForChild("Assets")
 local remotesFolder: Folder = assetsFolder:WaitForChild("Remotes")
 local npcEvent: RemoteEvent = remotesFolder:WaitForChild(REMOTE_NAME)
 
-local charactersFolder: Folder = Workspace:WaitForChild("Characters")
+local charactersFolder: Folder = workspace:WaitForChild("Characters")
 
 local isSpawnModeActive: boolean = false
 local uiConnected: boolean = false

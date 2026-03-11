@@ -34,6 +34,7 @@ local function on_dice_request(player: Player, payload: any): ()
 				Expression = result.Expression,
 				Total = result.Total,
 				Rolls = result.Rolls,
+				DetailString = result.DetailString,
 				IsMaster = isMaster,
 				IsInstant = isInstant
 			})

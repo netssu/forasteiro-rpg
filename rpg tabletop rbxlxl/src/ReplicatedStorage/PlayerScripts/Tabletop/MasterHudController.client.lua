@@ -214,25 +214,16 @@ local function cache_gui_objects(): ()
 	combatWindow = masterGui:FindFirstChild("CombatWindow")
 
 	local environmentBody = environmentWindow and environmentWindow:FindFirstChild("Body") or nil
+	local playersBody = playersWindow and playersWindow:FindFirstChild("Body") or nil
+	local combatBody = combatWindow and combatWindow:FindFirstChild("Body") or nil
 
 	rainButton = environmentBody and environmentBody:FindFirstChild("RainButton") or nil
 	customClockTimeBox = environmentBody and environmentBody:FindFirstChild("CustomClockTimeBox") or nil
 	applyClockTimeButton = environmentBody and environmentBody:FindFirstChild("ApplyClockTimeButton") or nil
 
-	playersList = playersWindow
-		and playersWindow:FindFirstChild("Body")
-		and playersWindow.Body:FindFirstChild("PlayersList")
-		or nil
-
-	orderList = combatWindow
-		and combatWindow:FindFirstChild("Body")
-		and combatWindow.Body:FindFirstChild("OrderList")
-		or nil
-
-	activeTurnLabel = combatWindow
-		and combatWindow:FindFirstChild("Body")
-		and combatWindow.Body:FindFirstChild("ActiveTurnLabel")
-		or nil
+	playersList = playersBody and playersBody:FindFirstChild("PlayersList") or nil
+	orderList = combatBody and combatBody:FindFirstChild("OrderList") or nil
+	activeTurnLabel = combatBody and combatBody:FindFirstChild("ActiveTurnLabel") or nil
 end
 
 local function update_gui_visibility(): ()
@@ -293,6 +284,11 @@ local function render_players_list(): ()
 	clear_players_children()
 
 	for _, charData in cachedSnapshot.Characters do
+		-- Pula a criação da interface se o personagem for um NPC
+		if charData.Character and charData.Character:GetAttribute("IsNPC") then
+			continue
+		end
+
 		local row = Instance.new("Frame")
 		row.Size = UDim2.new(1, -8, 0, 118)
 		row.BackgroundColor3 = Color3.fromRGB(26, 28, 34)
@@ -524,6 +520,26 @@ local function connect_window_close_buttons(window: Frame?): ()
 	end
 end
 
+local function connect_button_click(button: TextButton?, callback: () -> ()): ()
+	if not button then
+		return
+	end
+
+	button.MouseButton1Click:Connect(callback)
+end
+
+local function connect_tabletop_button(button: TextButton?, action: string, payloadBuilder: (() -> any?)?): ()
+	connect_button_click(button, function()
+		local payload = nil
+
+		if payloadBuilder then
+			payload = payloadBuilder()
+		end
+
+		fire_tabletop(action, payload)
+	end)
+end
+
 local function connect_static_buttons(): ()
 	if staticButtonsConnected or not masterGui or not topBar then
 		return
@@ -548,136 +564,147 @@ local function connect_static_buttons(): ()
 	local stopCombatButton = combatBody and combatBody:FindFirstChild("StopCombatButton") or nil
 	local clearOrderButton = combatBody and combatBody:FindFirstChild("ClearOrderButton") or nil
 
-	connect_window_close_buttons(environmentWindow)
-	connect_window_close_buttons(playersWindow)
-	connect_window_close_buttons(combatWindow)
+	local windowsToConnect = {
+		environmentWindow,
+		playersWindow,
+		combatWindow,
+	}
 
-	if returnButton then
-		returnButton.MouseButton1Click:Connect(function()
-			teamSelectEvent:FireServer({
-				Action = RETURN_TO_MENU_ACTION,
-			})
-		end)
+	for _, window in windowsToConnect do
+		connect_window_close_buttons(window)
 	end
 
-	if environmentToggleButton then
-		environmentToggleButton.MouseButton1Click:Connect(function()
-			toggle_window(environmentWindow)
-		end)
+	connect_button_click(returnButton, function()
+		teamSelectEvent:FireServer({
+			Action = RETURN_TO_MENU_ACTION,
+		})
+	end)
+
+	connect_button_click(environmentToggleButton, function()
+		toggle_window(environmentWindow)
+	end)
+
+	connect_button_click(playersToggleButton, function()
+		toggle_window(playersWindow)
+	end)
+
+	connect_button_click(combatToggleButton, function()
+		toggle_window(combatWindow)
+	end)
+
+	connect_tabletop_button(rainButton, "SetRain", function()
+		return {
+			Enabled = not cachedSnapshot.RainEnabled,
+		}
+	end)
+
+	local environmentBindings = {
+		{
+			Button = dawnButton,
+			Action = "SetClockTime",
+			Payload = function()
+				return {
+					Value = 6,
+				}
+			end,
+		},
+		{
+			Button = dayButton,
+			Action = "SetClockTime",
+			Payload = function()
+				return {
+					Value = 12,
+				}
+			end,
+		},
+		{
+			Button = duskButton,
+			Action = "SetClockTime",
+			Payload = function()
+				return {
+					Value = 18,
+				}
+			end,
+		},
+		{
+			Button = nightButton,
+			Action = "SetClockTime",
+			Payload = function()
+				return {
+					Value = 0,
+				}
+			end,
+		},
+		{
+			Button = neutralDayButton,
+			Action = "ApplyPreset",
+			Payload = function()
+				return {
+					PresetName = "NeutralDay",
+				}
+			end,
+		},
+		{
+			Button = warmEveningButton,
+			Action = "ApplyPreset",
+			Payload = function()
+				return {
+					PresetName = "WarmEvening",
+				}
+			end,
+		},
+		{
+			Button = coldNightButton,
+			Action = "ApplyPreset",
+			Payload = function()
+				return {
+					PresetName = "ColdNight",
+				}
+			end,
+		},
+	}
+
+	for _, binding in environmentBindings do
+		connect_tabletop_button(binding.Button, binding.Action, binding.Payload)
 	end
 
-	if playersToggleButton then
-		playersToggleButton.MouseButton1Click:Connect(function()
-			toggle_window(playersWindow)
-		end)
-	end
+	connect_button_click(applyClockTimeButton, function()
+		if not customClockTimeBox then
+			return
+		end
 
-	if combatToggleButton then
-		combatToggleButton.MouseButton1Click:Connect(function()
-			toggle_window(combatWindow)
-		end)
-	end
+		local numberValue = sanitize_number(customClockTimeBox.Text)
 
-	if rainButton then
-		rainButton.MouseButton1Click:Connect(function()
-			fire_tabletop("SetRain", {
-				Enabled = not cachedSnapshot.RainEnabled,
-			})
-		end)
-	end
+		if not numberValue then
+			return
+		end
 
-	if dawnButton then
-		dawnButton.MouseButton1Click:Connect(function()
-			fire_tabletop("SetClockTime", {
-				Value = 6,
-			})
-		end)
-	end
+		fire_tabletop("SetClockTime", {
+			Value = numberValue,
+		})
+	end)
 
-	if dayButton then
-		dayButton.MouseButton1Click:Connect(function()
-			fire_tabletop("SetClockTime", {
-				Value = 12,
-			})
-		end)
-	end
+	local combatBindings = {
+		{
+			Button = startCombatButton,
+			Action = "StartCombat",
+		},
+		{
+			Button = nextTurnButton,
+			Action = "NextTurn",
+		},
+		{
+			Button = stopCombatButton,
+			Action = "StopCombat",
+		},
+		{
+			Button = clearOrderButton,
+			Action = "ClearCombatOrder",
+		},
+	}
 
-	if duskButton then
-		duskButton.MouseButton1Click:Connect(function()
-			fire_tabletop("SetClockTime", {
-				Value = 18,
-			})
-		end)
-	end
-
-	if nightButton then
-		nightButton.MouseButton1Click:Connect(function()
-			fire_tabletop("SetClockTime", {
-				Value = 0,
-			})
-		end)
-	end
-
-	if neutralDayButton then
-		neutralDayButton.MouseButton1Click:Connect(function()
-			fire_tabletop("ApplyPreset", {
-				PresetName = "NeutralDay",
-			})
-		end)
-	end
-
-	if warmEveningButton then
-		warmEveningButton.MouseButton1Click:Connect(function()
-			fire_tabletop("ApplyPreset", {
-				PresetName = "WarmEvening",
-			})
-		end)
-	end
-
-	if coldNightButton then
-		coldNightButton.MouseButton1Click:Connect(function()
-			fire_tabletop("ApplyPreset", {
-				PresetName = "ColdNight",
-			})
-		end)
-	end
-
-	if applyClockTimeButton and customClockTimeBox then
-		applyClockTimeButton.MouseButton1Click:Connect(function()
-			local numberValue = tonumber(customClockTimeBox.Text)
-
-			if not numberValue then
-				return
-			end
-
-			fire_tabletop("SetClockTime", {
-				Value = numberValue,
-			})
-		end)
-	end
-
-	if startCombatButton then
-		startCombatButton.MouseButton1Click:Connect(function()
-			fire_tabletop("StartCombat")
-		end)
-	end
-
-	if nextTurnButton then
-		nextTurnButton.MouseButton1Click:Connect(function()
-			fire_tabletop("NextTurn")
-		end)
-	end
-
-	if stopCombatButton then
-		stopCombatButton.MouseButton1Click:Connect(function()
-			fire_tabletop("StopCombat")
-		end)
-	end
-
-	if clearOrderButton then
-		clearOrderButton.MouseButton1Click:Connect(function()
-			fire_tabletop("ClearCombatOrder")
-		end)
+	for _, binding in combatBindings do
+		connect_tabletop_button(binding.Button, binding.Action, nil)
 	end
 end
 

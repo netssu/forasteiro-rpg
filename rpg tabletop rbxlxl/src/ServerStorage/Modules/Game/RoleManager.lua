@@ -13,7 +13,7 @@ local ROLE_TOKEN_FRONT_IMAGE_NAME: string = "RoleTokenFrontImage"
 local ROLE_TOKEN_BACK_IMAGE_NAME: string = "RoleTokenBackImage"
 
 local ROLE_IMAGE_ATTRIBUTE_NAME: string = "RoleImageId"
-local TOKEN_FORWARD_OFFSET: number = 0--1.75
+local TOKEN_FORWARD_OFFSET: number = 0
 local TOKEN_THICKNESS: number = 0.05
 local TOKEN_MIN_WIDTH: number = 3
 local TOKEN_WIDTH_RATIO: number = 0.72
@@ -390,6 +390,14 @@ end
 function RoleManager.initialize_character(character: Model): ()
 	sanitizeVersionByCharacter[character] = 0
 
+	local player = Players:GetPlayerFromCharacter(character)
+	if player then
+		local playerImage = player:GetAttribute(ROLE_IMAGE_ATTRIBUTE_NAME)
+		if playerImage and playerImage ~= "" then
+			character:SetAttribute(ROLE_IMAGE_ATTRIBUTE_NAME, playerImage)
+		end
+	end
+
 	local currentImage = character:GetAttribute(ROLE_IMAGE_ATTRIBUTE_NAME)
 	if currentImage == nil or currentImage == "" then
 		character:SetAttribute(ROLE_IMAGE_ATTRIBUTE_NAME, DEFAULT_ROLE_IMAGE_ID)
@@ -424,7 +432,14 @@ function RoleManager.process_image_request(sender: Player, payload: any): ()
 	end
 
 	local character = payload.Character
-	character:SetAttribute(ROLE_IMAGE_ATTRIBUTE_NAME, normalize_image_id(payload.ImageId))
+	local newImageId = normalize_image_id(payload.ImageId)
+
+	character:SetAttribute(ROLE_IMAGE_ATTRIBUTE_NAME, newImageId)
+
+	local targetPlayer = Players:GetPlayerFromCharacter(character)
+	if targetPlayer then
+		targetPlayer:SetAttribute(ROLE_IMAGE_ATTRIBUTE_NAME, newImageId)
+	end
 
 	RoleManager.apply_role_state(character)
 end

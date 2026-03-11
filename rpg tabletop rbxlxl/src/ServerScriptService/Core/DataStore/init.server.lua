@@ -37,6 +37,10 @@ local function attach_player_profile(player: Player): ()
 	DataUtility.server.attach_profile(player, profile)
 	apply_loaded_data_to_player(player, profile)
 
+	player:GetAttributeChangedSignal("RoleImageId"):Connect(function()
+		profile.Data.Image = player:GetAttribute("RoleImageId")
+	end)
+
 	task.spawn(function()
 		while player.Parent and profilesByUserId[player.UserId] == profile do
 			task.wait(1)

@@ -72,7 +72,7 @@ local function update_visibility(): ()
 	end
 end
 
-local function add_history_entry(playerName: string, expression: string, total: number, isInstant: boolean): ()
+local function add_history_entry(playerName: string, expression: string, total: number, isInstant: boolean, detailString: string): ()
 	if not historyContainer then return end
 
 	entryCount += 1
@@ -105,7 +105,7 @@ local function add_history_entry(playerName: string, expression: string, total: 
 	detailLabel.Font = Enum.Font.Jura
 	detailLabel.TextSize = 12
 	detailLabel.TextXAlignment = Enum.TextXAlignment.Left
-	detailLabel.Text = expression .. "  =  " .. tostring(total)
+	detailLabel.Text = detailString
 	detailLabel.Parent = entry
 
 	entry.Parent = historyContainer
@@ -123,7 +123,7 @@ local function on_roll_result(payload: any): ()
 	if typeof(payload) ~= "table" or payload.Action ~= "RollResult" then return end
 
 	local playerName = payload.Player and payload.Player.Name or "Desconhecido"
-	add_history_entry(playerName, payload.Expression, payload.Total, payload.IsInstant)
+	add_history_entry(playerName, payload.Expression, payload.Total, payload.IsInstant, payload.DetailString)
 end
 
 ------------------//MAIN FUNCTIONS

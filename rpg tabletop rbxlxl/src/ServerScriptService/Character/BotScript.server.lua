@@ -93,6 +93,7 @@ local function bot_roll_loop(character: Model): ()
 				Expression = "1d20",
 				Total = roll,
 				Rolls = {roll},
+				DetailString = "1d20 = (" .. tostring(roll) .. ") = " .. tostring(roll),
 				IsMaster = false,
 				IsInstant = false
 			})

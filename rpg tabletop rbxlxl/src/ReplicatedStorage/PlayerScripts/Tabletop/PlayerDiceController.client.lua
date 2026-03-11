@@ -106,7 +106,7 @@ local function update_visibility(): ()
 	end
 end
 
-local function animate_local_physics_dice(total: number, rolls: {number}, expression: string): ()
+local function animate_local_physics_dice(total: number, rolls: {number}, expression: string, detailString: string): ()
 	local character = player.Character
 	local rootPart = character and character:FindFirstChild("HumanoidRootPart")
 	local cam = workspace.CurrentCamera
@@ -196,15 +196,11 @@ local function animate_local_physics_dice(total: number, rolls: {number}, expres
 			centerAnchor.Position = centerPosition
 			centerAnchor.Parent = workspace
 
-			local modStr = string.match(expression, "([+-]%d+)$")
-			local totalText = "( " .. tostring(total) .. " )"
-			if modStr then
-				totalText = "( " .. tostring(total) .. " | " .. modStr .. " )"
-			end
+			local totalText = detailString
 
 			local bgui = Instance.new("BillboardGui")
 			bgui.Name = "ResultGui"
-			bgui.Size = UDim2.new(0, 150, 0, 80)
+			bgui.Size = UDim2.new(0, 300, 0, 80)
 			bgui.StudsOffset = Vector3.new(0, 3.5, 0)
 			bgui.AlwaysOnTop = true
 
@@ -273,7 +269,7 @@ local function animate_local_physics_dice(total: number, rolls: {number}, expres
 	end)
 end
 
-local function animate_world_dice(character: Model, total: number): ()
+local function animate_world_dice(character: Model, total: number, detailString: string): ()
 	local head = character:FindFirstChild("Head")
 
 	if not head or not head:IsA("BasePart") then 
@@ -309,7 +305,7 @@ local function animate_world_dice(character: Model, total: number): ()
 			if not dice:FindFirstChild("ResultGui") then
 				local bgui = Instance.new("BillboardGui")
 				bgui.Name = "ResultGui"
-				bgui.Size = UDim2.new(0, 100, 0, 100)
+				bgui.Size = UDim2.new(0, 300, 0, 100)
 				bgui.StudsOffset = Vector3.new(0, 2, 0)
 				bgui.AlwaysOnTop = true
 
@@ -319,7 +315,7 @@ local function animate_world_dice(character: Model, total: number): ()
 				label.TextColor3 = Color3.fromRGB(255, 255, 255)
 				label.FontFace = Font.fromId(DICE_FONT_ID, Enum.FontWeight.Bold)
 				label.TextSize = 48
-				label.Text = tostring(total)
+				label.Text = detailString
 
 				local stroke = Instance.new("UIStroke")
 				stroke.Color = Color3.fromRGB(0, 0, 0)
@@ -344,10 +340,10 @@ local function on_roll_result(payload: any): ()
 	end
 
 	if payload.Player == player then
-		animate_local_physics_dice(payload.Total, payload.Rolls, payload.Expression)
+		animate_local_physics_dice(payload.Total, payload.Rolls, payload.Expression, payload.DetailString)
 	else
 		if payload.Character then
-			animate_world_dice(payload.Character, payload.Total)
+			animate_world_dice(payload.Character, payload.Total, payload.DetailString)
 		end
 	end
 end

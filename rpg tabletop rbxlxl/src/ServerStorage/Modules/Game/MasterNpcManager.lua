@@ -11,13 +11,14 @@ local MasterNpcManager = {}
 local assetsFolder: Folder = ReplicatedStorage:WaitForChild("Assets")
 local charactersFolder: Folder = Workspace:WaitForChild(CHARACTERS_FOLDER_NAME)
 
+local savedMasterCFrames: {[Player]: CFrame} = {}
+
 ------------------//FUNCTIONS
 function MasterNpcManager.create_npc(position: Vector3): ()
 	local modelsFolder = assetsFolder:FindFirstChild("Models")
 	local rigTemplate = modelsFolder and modelsFolder:FindFirstChild("Rig")
 
 	if not rigTemplate then
-		warn("Rig não encontrado em ReplicatedStorage.Assets.Models!")
 		return
 	end
 
@@ -91,11 +92,15 @@ function MasterNpcManager.process_request(player: Player, data: any): ()
 			local oldChar = player.Character
 			if oldChar == npc then return end
 
-			if oldChar and oldChar:GetAttribute("IsNPC") then
-				oldChar.Archivable = true
-				local clone = oldChar:Clone()
-				clone.Parent = charactersFolder
-				oldChar:Destroy()
+			if oldChar then
+				if oldChar:GetAttribute("IsNPC") then
+					oldChar.Archivable = true
+					local clone = oldChar:Clone()
+					clone.Parent = charactersFolder
+					oldChar:Destroy()
+				else
+					savedMasterCFrames[player] = oldChar:GetPivot()
+				end
 			end
 
 			player.Character = npc
@@ -114,8 +119,24 @@ function MasterNpcManager.process_request(player: Player, data: any): ()
 
 		player.Character = nil
 		player:LoadCharacter()
+
+		local savedCFrame = savedMasterCFrames[player]
+		if savedCFrame then
+			local newChar = player.Character
+			if newChar then
+				local hrp = newChar:WaitForChild("HumanoidRootPart", 2)
+				if hrp then
+					newChar:PivotTo(savedCFrame)
+				end
+			end
+			savedMasterCFrames[player] = nil
+		end
 		return
 	end
 end
+
+Players.PlayerRemoving:Connect(function(player: Player)
+	savedMasterCFrames[player] = nil
+end)
 
 return MasterNpcManager
