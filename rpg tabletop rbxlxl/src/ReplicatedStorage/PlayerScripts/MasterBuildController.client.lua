@@ -22,6 +22,8 @@ local DEFAULT_WALL_THICKNESS: number = 1
 local DEFAULT_CREATE_SIZE: Vector3 = Vector3.new(8, 4, 8)
 local DEFAULT_COLOR: Color3 = Color3.fromRGB(163, 162, 165)
 local DEFAULT_LIGHT_COLOR: Color3 = Color3.fromRGB(255, 253, 224)
+local PLAYER_TEAM_NAME: string = "Jogador"
+local PLAYER_SPECTATOR_ATTRIBUTE_NAME: string = "PlayerSpectatorEnabled"
 
 local PREVIEW_TRANSPARENCY: number = 0.45
 local ROTATION_STEP_DEGREES: number = 15
@@ -128,6 +130,17 @@ local function is_master(): boolean
 	return player.Team ~= nil and player.Team.Name == MASTER_TEAM_NAME
 end
 
+local function is_player_spectator_drag_enabled(): boolean
+	return player.Team ~= nil
+		and player.Team.Name == PLAYER_TEAM_NAME
+		and player:GetAttribute(PLAYER_SPECTATOR_ATTRIBUTE_NAME) == true
+end
+
+local function can_use_character_drag(): boolean
+	return is_master() or is_player_spectator_drag_enabled()
+end
+
+
 local function get_current_camera(): Camera
 	local currentCamera = workspace.CurrentCamera
 	while not currentCamera do
@@ -161,6 +174,19 @@ local function is_valid_selected_character(targetCharacter: Model?): boolean
 	local charactersFolder = workspace:FindFirstChild("Characters")
 	return charactersFolder and targetCharacter.Parent == charactersFolder
 end
+
+local function can_drag_character(targetCharacter: Model?): boolean
+	if not targetCharacter then
+		return false
+	end
+
+	if is_master() then
+		return is_valid_selected_character(targetCharacter)
+	end
+
+	return is_player_spectator_drag_enabled() and targetCharacter == player.Character
+end
+
 
 local function fire_build(action: string, payload: any?): ()
 	local request = payload or {}
@@ -614,7 +640,7 @@ local function update_hover_highlight(): ()
 		end
 	end
 
-	if not is_master() then
+	if not can_use_character_drag() then
 		currentHoverHighlight.Adornee = nil
 		return
 	end
@@ -642,6 +668,11 @@ local function update_hover_highlight(): ()
 	end
 
 	if a == "Character" and c and canHoverCharacters then
+		if not can_drag_character(c) then
+			currentHoverHighlight.Adornee = nil
+			return
+		end
+	
 		if hitboxesFolder then
 			for _, hb in hitboxesFolder:GetChildren() do
 				local targetVal = hb:FindFirstChild("TargetCharacter")
@@ -686,6 +717,10 @@ local function get_mouse_point_on_horizontal_plane(planeY: number): Vector3?
 end
 
 local function start_character_mouse_drag(targetCharacter: Model): ()
+	if not can_drag_character(targetCharacter) then
+		return
+	end
+	
 	local rootPart = get_root_part_for_character(targetCharacter)
 	if not rootPart then return end
 
@@ -701,6 +736,11 @@ end
 
 local function update_character_mouse_drag(): ()
 	if not characterMouseDragActive or not characterMouseDragTarget then return end
+
+	if not can_drag_character(characterMouseDragTarget) then
+		stop_character_mouse_drag()
+		return
+	end
 
 	if not is_valid_selected_character(characterMouseDragTarget) then
 		clear_selection()
@@ -1101,7 +1141,9 @@ local function handle_light_click(): ()
 end
 
 local function handle_world_left_click(): ()
-	if not is_master() then return end
+	if not can_use_character_drag() and not is_master() then
+		return
+	end
 
 	if is_pointer_over_gui() then
 		return
@@ -1117,11 +1159,15 @@ local function handle_world_left_click(): ()
 		clear_selection()
 	end
 
-	if kind == "Character" and targetCharacter and canSelectCharacters then
+	if kind == "Character" and targetCharacter and canSelectCharacters and can_drag_character(targetCharacter) then
 		if selectedCharacter ~= targetCharacter then
 			set_selected_character(targetCharacter)
 		end
 		start_character_mouse_drag(targetCharacter)
+		return
+	end
+
+	if not is_master() then
 		return
 	end
 
@@ -1139,9 +1185,20 @@ local function handle_world_left_click(): ()
 		end
 	end
 
-	if toolMode == TOOL_MODE_CREATE then handle_create_click() return end
-	if toolMode == TOOL_MODE_WALL then handle_wall_click() return end
-	if toolMode == TOOL_MODE_LIGHT then handle_light_click() return end
+	if toolMode == TOOL_MODE_CREATE then
+		handle_create_click()
+		return
+	end
+
+	if toolMode == TOOL_MODE_WALL then
+		handle_wall_click()
+		return
+	end
+
+	if toolMode == TOOL_MODE_LIGHT then
+		handle_light_click()
+		return
+	end
 
 	clear_selection()
 end
@@ -1427,8 +1484,10 @@ end
 local function sync_master_hitboxes(): ()
 	local hitboxesFolder = workspace:FindFirstChild("MasterHitboxes")
 
-	if not is_master() then
-		if hitboxesFolder then hitboxesFolder:Destroy() end
+	if not can_use_character_drag() then
+		if hitboxesFolder then
+			hitboxesFolder:Destroy()
+		end
 		return
 	end
 
@@ -1439,7 +1498,9 @@ local function sync_master_hitboxes(): ()
 	end
 
 	local charsFolder = workspace:FindFirstChild("Characters")
-	if not charsFolder then return end
+	if not charsFolder then
+		return
+	end
 
 	local processed = {}
 	local hitboxesByChar = {}
@@ -1551,6 +1612,14 @@ UserInputService.InputEnded:Connect(function(input: InputObject)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
 		stop_character_mouse_drag()
 	end
+end)
+
+player:GetAttributeChangedSignal(PLAYER_SPECTATOR_ATTRIBUTE_NAME):Connect(function()
+	createAnchor = nil
+	wallAnchor = nil
+	clear_selection()
+	clear_hover_highlight()
+	hide_preview()
 end)
 
 player:GetPropertyChangedSignal("Team"):Connect(function()

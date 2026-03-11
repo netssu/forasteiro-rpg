@@ -21,7 +21,8 @@ end
 
 ------------------//FUNCTIONS
 local function parse_and_roll(expression: string): any
-	local countStr, sidesStr, modStr = string.match(string.lower(expression), "(%d*)d(%d+)([+-]?%d*)")
+	local cleanExpression = string.gsub(string.lower(expression), "%s+", "")
+	local countStr, sidesStr, modStr = string.match(cleanExpression, "(%d*)d(%d+)([+-]?%d*)")
 
 	if not sidesStr then
 		return nil

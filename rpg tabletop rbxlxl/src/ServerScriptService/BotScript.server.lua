@@ -112,13 +112,15 @@ local function bot_loop(character: Model): ()
 end
 
 ------------------//INIT
-if not RunService:IsStudio() then
-	return
-end
 
 -- Procura o TestBot na pasta Characters (onde movemos ele antes) ou direto no workspace
 local charactersFolder = workspace:FindFirstChild("Characters")
 local testBot = charactersFolder and charactersFolder:FindFirstChild("TestBot") or workspace:FindFirstChild("TestBot")
+
+if not RunService:IsStudio()  then
+	testBot:Destroy()
+	return
+end
 
 if testBot then
 	bot_loop(testBot)

@@ -12,6 +12,7 @@ local ASSETS_FOLDER_NAME: string = "Assets"
 local REMOTES_FOLDER_NAME: string = "Remotes"
 local REMOTE_NAME: string = "PlayerMovementEvent"
 local TURN_REMOTE_NAME: string = "PlayerTurnEvent"
+local PLAYER_SPECTATOR_ATTRIBUTE_NAME: string = "PlayerSpectatorEnabled"
 
 local MAX_DISTANCE_METERS: number = 9.0
 local STUDS_PER_METER: number = 3.6
@@ -36,6 +37,7 @@ local undoButton: TextButton? = nil
 
 local isTracking: boolean = false
 local isMyTurn: boolean = false
+local serverTurnActive: boolean = false
 local startCFrame: CFrame? = nil
 local lastPoint: Vector3? = nil
 local currentDistance: number = 0
@@ -52,6 +54,10 @@ local function is_player_role(): boolean
 	end
 
 	return false
+end
+
+local function is_player_spectator_enabled(): boolean
+	return player:GetAttribute(PLAYER_SPECTATOR_ATTRIBUTE_NAME) == true
 end
 
 local function clear_trail(): ()
@@ -99,14 +105,14 @@ local function start_new_path(rootPart: BasePart): ()
 end
 
 local function set_turn_state(state: boolean): ()
-	if not is_player_role() then
+	if not is_player_role() or is_player_spectator_enabled() then
 		state = false
 	end
 
 	isMyTurn = state
 
 	if moveFrame then
-		moveFrame.Visible = isMyTurn
+		moveFrame.Visible = isMyTurn and not is_player_spectator_enabled()
 	end
 
 	isTracking = isMyTurn
@@ -178,9 +184,15 @@ end
 
 local function update_visibility(): ()
 	cache_ui()
-	local isPlayer = is_player_role()
 
-	if not isPlayer and isMyTurn then
+	local isPlayer = is_player_role()
+	local isSpectator = is_player_spectator_enabled()
+
+	if moveFrame then
+		moveFrame.Visible = isMyTurn and isPlayer and not isSpectator
+	end
+
+	if (not isPlayer or isSpectator) and isMyTurn then
 		set_turn_state(false)
 	end
 end
@@ -198,7 +210,7 @@ RunService.RenderStepped:Connect(function()
 		start_new_path(rootPart)
 		return
 	end
-	
+
 	local currentMaxDistance = character:GetAttribute("MaxMovementDistance") or MAX_DISTANCE_STUDS
 
 	if currentDistance >= currentMaxDistance then
@@ -215,13 +227,13 @@ RunService.RenderStepped:Connect(function()
 	end
 
 	if distanceMoved >= POINT_INTERVAL then
-		if currentDistance + distanceMoved >= MAX_DISTANCE_STUDS then
-			local remaining = MAX_DISTANCE_STUDS - currentDistance
+		if currentDistance + distanceMoved >= currentMaxDistance then
+			local remaining = currentMaxDistance - currentDistance
 			local direction = (currentFootPos - lastPoint).Unit
 			local finalPos = lastPoint + direction * remaining
 
 			draw_segment(lastPoint, finalPos)
-			currentDistance = MAX_DISTANCE_STUDS
+			currentDistance = currentMaxDistance
 			lastPoint = finalPos
 
 			rootPart.CFrame = CFrame.new(finalPos + Vector3.new(0, 2.5, 0)) * get_rotation_only_cframe(rootPart.CFrame)
@@ -240,6 +252,7 @@ end)
 UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
 	if gameProcessed then return end
 	if not is_player_role() then return end
+	if is_player_spectator_enabled() then return end
 
 	if isMyTurn then
 		if input.KeyCode == Enum.KeyCode.Z then
@@ -249,7 +262,13 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 end)
 
 turnEvent.OnClientEvent:Connect(function(state: boolean)
+	serverTurnActive = state
 	set_turn_state(state)
+end)
+
+player:GetAttributeChangedSignal(PLAYER_SPECTATOR_ATTRIBUTE_NAME):Connect(function()
+	update_visibility()
+	set_turn_state(serverTurnActive)
 end)
 
 player:GetPropertyChangedSignal("Team"):Connect(update_visibility)
