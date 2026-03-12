@@ -142,11 +142,41 @@ function RoomBuilder.get_room_data(exactPos, gridSize, wallHeight, wallThickness
 	for _, d in RoomBuilder.Doors do table.insert(allDoors, d) end
 	if hoveringDoor then table.insert(allDoors, hoveringDoor) end
 
+	local raycastParams = RaycastParams.new()
+	raycastParams.FilterType = Enum.RaycastFilterType.Include
+	local buildFolder = workspace:FindFirstChild("TabletopBuildParts")
+	if buildFolder then
+		raycastParams.FilterDescendantsInstances = {buildFolder}
+	end
+
 	for _, door in allDoors do
 		local nextWalls = {}
 		for _, wall in currentWalls do
 			local sliced = slice_wall(wall.CFrame, wall.Size, door.CFrame, door.Size)
-			for _, s in sliced do table.insert(nextWalls, s) end
+
+			if #sliced ~= 1 or sliced[1].Size ~= wall.Size then
+				local isBlocked = false
+				if buildFolder then
+					local normal = wall.CFrame.RightVector
+					local maxDist = (wall.Size.X / 2) + 1
+					local hitFw = workspace:Raycast(door.CFrame.Position, normal * maxDist, raycastParams)
+					local hitBw = workspace:Raycast(door.CFrame.Position, -normal * maxDist, raycastParams)
+
+					if hitFw and hitFw.Instance:GetAttribute("BuildKind") == "Wall" then
+						isBlocked = true
+					elseif hitBw and hitBw.Instance:GetAttribute("BuildKind") == "Wall" then
+						isBlocked = true
+					end
+				end
+
+				if isBlocked then
+					table.insert(nextWalls, wall)
+				else
+					for _, s in sliced do table.insert(nextWalls, s) end
+				end
+			else
+				for _, s in sliced do table.insert(nextWalls, s) end
+			end
 		end
 		currentWalls = nextWalls
 	end

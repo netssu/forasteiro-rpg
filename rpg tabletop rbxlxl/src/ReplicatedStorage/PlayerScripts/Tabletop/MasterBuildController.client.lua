@@ -22,6 +22,7 @@ local TOOL_MODE_LIGHT: string = "Light"
 
 local DEFAULT_GRID_SIZE: number = 1
 local DEFAULT_WALL_HEIGHT: number = 12
+local DEFAULT_ROOM_HEIGHT: number = DEFAULT_WALL_HEIGHT
 local DEFAULT_WALL_THICKNESS: number = 1
 local DEFAULT_CREATE_SIZE: Vector3 = Vector3.new(8, 4, 8)
 local DEFAULT_COLOR: Color3 = Color3.fromRGB(163, 162, 165)
@@ -89,6 +90,7 @@ local sizeZBox: TextBox? = nil
 local gridBox: TextBox? = nil
 local wallHeightBox: TextBox? = nil
 local wallThicknessBox: TextBox? = nil
+local roomHeightBox: TextBox? = nil
 local colorRBox: TextBox? = nil
 local colorGBox: TextBox? = nil
 local colorBBox: TextBox? = nil
@@ -99,6 +101,7 @@ local toolMode: string = TOOL_MODE_NONE
 local gridSize: number = DEFAULT_GRID_SIZE
 local wallHeight: number = DEFAULT_WALL_HEIGHT
 local wallThickness: number = DEFAULT_WALL_THICKNESS
+local roomHeight: number = DEFAULT_ROOM_HEIGHT
 local createSize: Vector3 = DEFAULT_CREATE_SIZE
 local buildColor: Color3 = DEFAULT_COLOR
 local lightRange: number = 20
@@ -181,16 +184,33 @@ local function get_build_folder(): Folder?
 end
 
 local function is_valid_selected_part(inst: BasePart?): boolean
-	if not inst then return false end
+	if not inst then
+		return false
+	end
+
 	local buildFolder = get_build_folder()
-	if not buildFolder then return false end
+	if not buildFolder then
+		return false
+	end
+
 	return inst.Parent == buildFolder and inst:GetAttribute("IsTabletopBuildPart") == true
 end
 
 local function is_valid_selected_character(targetModel: Model?): boolean
-	if not targetModel then return false end
+	if not targetModel then
+		return false
+	end
+
 	local charactersFolder = workspace:FindFirstChild("Characters")
 	return charactersFolder and targetModel.Parent == charactersFolder
+end
+
+local function get_flat_wall_unit(vector: Vector3): Vector3
+	local flat = Vector3.new(vector.X, 0, vector.Z)
+	if flat.Magnitude <= 0.0001 then
+		return Vector3.new(0, 0, -1)
+	end
+	return flat.Unit
 end
 
 local function can_drag_character(targetModel: Model?): boolean
@@ -213,7 +233,10 @@ end
 
 local function sanitize_text_number(text: string, fallback: number, minimum: number): number
 	local numberValue = tonumber(text)
-	if not numberValue then return fallback end
+	if not numberValue then
+		return fallback
+	end
+
 	return math.max(minimum, numberValue)
 end
 
@@ -235,32 +258,74 @@ local function snap_vector3(value: Vector3, stepValue: number): Vector3
 end
 
 local function vector_from_normal_id(normalId: Enum.NormalId, cframe: CFrame): Vector3
-	if normalId == Enum.NormalId.Right then return cframe.RightVector end
-	if normalId == Enum.NormalId.Left then return -cframe.RightVector end
-	if normalId == Enum.NormalId.Top then return cframe.UpVector end
-	if normalId == Enum.NormalId.Bottom then return -cframe.UpVector end
-	if normalId == Enum.NormalId.Front then return cframe.LookVector end
+	if normalId == Enum.NormalId.Right then
+		return cframe.RightVector
+	end
+
+	if normalId == Enum.NormalId.Left then
+		return -cframe.RightVector
+	end
+
+	if normalId == Enum.NormalId.Top then
+		return cframe.UpVector
+	end
+
+	if normalId == Enum.NormalId.Bottom then
+		return -cframe.UpVector
+	end
+
+	if normalId == Enum.NormalId.Front then
+		return cframe.LookVector
+	end
+
 	return -cframe.LookVector
 end
 
 local function vector_from_character_normal_id(normalId: Enum.NormalId, cframe: CFrame): Vector3
-	if normalId == Enum.NormalId.Right then return cframe.RightVector end
-	if normalId == Enum.NormalId.Left then return -cframe.RightVector end
-	if normalId == Enum.NormalId.Top then return cframe.UpVector end
-	if normalId == Enum.NormalId.Bottom then return -cframe.UpVector end
-	if normalId == Enum.NormalId.Front then return cframe.LookVector end
+	if normalId == Enum.NormalId.Right then
+		return cframe.RightVector
+	end
+
+	if normalId == Enum.NormalId.Left then
+		return -cframe.RightVector
+	end
+
+	if normalId == Enum.NormalId.Top then
+		return cframe.UpVector
+	end
+
+	if normalId == Enum.NormalId.Bottom then
+		return -cframe.UpVector
+	end
+
+	if normalId == Enum.NormalId.Front then
+		return cframe.LookVector
+	end
+
 	return -cframe.LookVector
 end
 
 local function local_axis_name_from_normal(normalId: Enum.NormalId): string
-	if normalId == Enum.NormalId.Right or normalId == Enum.NormalId.Left then return "X" end
-	if normalId == Enum.NormalId.Top or normalId == Enum.NormalId.Bottom then return "Y" end
+	if normalId == Enum.NormalId.Right or normalId == Enum.NormalId.Left then
+		return "X"
+	end
+
+	if normalId == Enum.NormalId.Top or normalId == Enum.NormalId.Bottom then
+		return "Y"
+	end
+
 	return "Z"
 end
 
 local function rotation_cframe_from_axis(axis: Enum.Axis, angle: number): CFrame
-	if axis == Enum.Axis.X then return CFrame.Angles(angle, 0, 0) end
-	if axis == Enum.Axis.Y then return CFrame.Angles(0, angle, 0) end
+	if axis == Enum.Axis.X then
+		return CFrame.Angles(angle, 0, 0)
+	end
+
+	if axis == Enum.Axis.Y then
+		return CFrame.Angles(0, angle, 0)
+	end
+
 	return CFrame.Angles(0, 0, angle)
 end
 
@@ -386,6 +451,7 @@ local function cache_gui_objects(): ()
 	roomSettingsFrame = buildBody and buildBody:FindFirstChild("RoomSettingsFrame") or nil
 	roomFloorButton = roomSettingsFrame and roomSettingsFrame:FindFirstChild("RoomFloorButton") or nil
 	roomCeilingButton = roomSettingsFrame and roomSettingsFrame:FindFirstChild("RoomCeilingButton") or nil
+	roomHeightBox = roomSettingsFrame and roomSettingsFrame:FindFirstChild("RoomHeightBox") or nil
 
 	sizeXBox = buildBody and buildBody:FindFirstChild("SizeXBox") or nil
 	sizeYBox = buildBody and buildBody:FindFirstChild("SizeYBox") or nil
@@ -400,23 +466,71 @@ local function cache_gui_objects(): ()
 	lightBrightnessBox = buildBody and buildBody:FindFirstChild("LightBrightnessBox") or nil
 end
 
+local function sync_room_height_default(): ()
+	if roomHeightBox and roomHeightBox.Text ~= "" then
+		roomHeight = sanitize_text_number(roomHeightBox.Text, wallHeight, 1)
+	else
+		roomHeight = wallHeight
+		if roomHeightBox then
+			roomHeightBox.Text = tostring(roomHeight)
+		end
+	end
+end
+
 local function sync_boxes_from_state(): ()
-	if sizeXBox then sizeXBox.Text = tostring(createSize.X) end
-	if sizeYBox then sizeYBox.Text = tostring(createSize.Y) end
-	if sizeZBox then sizeZBox.Text = tostring(createSize.Z) end
-	if gridBox then gridBox.Text = tostring(gridSize) end
-	if wallHeightBox then wallHeightBox.Text = tostring(wallHeight) end
-	if wallThicknessBox then wallThicknessBox.Text = tostring(wallThickness) end
-	if colorRBox then colorRBox.Text = tostring(clamp_color_channel(buildColor.R * 255)) end
-	if colorGBox then colorGBox.Text = tostring(clamp_color_channel(buildColor.G * 255)) end
-	if colorBBox then colorBBox.Text = tostring(clamp_color_channel(buildColor.B * 255)) end
-	if lightRangeBox then lightRangeBox.Text = tostring(lightRange) end
-	if lightBrightnessBox then lightBrightnessBox.Text = tostring(lightBrightness) end
+	if sizeXBox then
+		sizeXBox.Text = tostring(createSize.X)
+	end
+
+	if sizeYBox then
+		sizeYBox.Text = tostring(createSize.Y)
+	end
+
+	if sizeZBox then
+		sizeZBox.Text = tostring(createSize.Z)
+	end
+
+	if gridBox then
+		gridBox.Text = tostring(gridSize)
+	end
+
+	if wallHeightBox then
+		wallHeightBox.Text = tostring(wallHeight)
+	end
+
+	if wallThicknessBox then
+		wallThicknessBox.Text = tostring(wallThickness)
+	end
+
+	if roomHeightBox then
+		roomHeightBox.Text = tostring(roomHeight)
+	end
+
+	if colorRBox then
+		colorRBox.Text = tostring(clamp_color_channel(buildColor.R * 255))
+	end
+
+	if colorGBox then
+		colorGBox.Text = tostring(clamp_color_channel(buildColor.G * 255))
+	end
+
+	if colorBBox then
+		colorBBox.Text = tostring(clamp_color_channel(buildColor.B * 255))
+	end
+
+	if lightRangeBox then
+		lightRangeBox.Text = tostring(lightRange)
+	end
+
+	if lightBrightnessBox then
+		lightBrightnessBox.Text = tostring(lightBrightness)
+	end
 
 	if roomFloorButton then
 		roomFloorButton.Text = createWithFloor and "Chão: SIM" or "Chão: NÃO"
 		roomFloorButton.BackgroundColor3 = createWithFloor and ACTIVE_BUTTON_COLOR or INACTIVE_BUTTON_COLOR
 	end
+
 	if roomCeilingButton then
 		roomCeilingButton.Text = createWithCeiling and "Teto: SIM" or "Teto: NÃO"
 		roomCeilingButton.BackgroundColor3 = createWithCeiling and ACTIVE_BUTTON_COLOR or INACTIVE_BUTTON_COLOR
@@ -432,52 +546,90 @@ end
 
 local function sync_color_boxes_from_part(partObj: BasePart): ()
 	buildColor = partObj.Color
+
 	local light = partObj:FindFirstChildOfClass("PointLight")
 	if light then
 		lightRange = light.Range
 		lightBrightness = light.Brightness
 	end
+
 	sync_boxes_from_state()
 end
 
 local function set_status(text: string): ()
-	if statusLabel then statusLabel.Text = text end
+	if statusLabel then
+		statusLabel.Text = text
+	end
 end
 
 local function get_ordered_modes(): {string}
 	local activeModes = {}
 
-	if selectModeButton then table.insert(activeModes, {btn = selectModeButton, mode = TOOL_MODE_SELECT}) end
-	if createModeButton then table.insert(activeModes, {btn = createModeButton, mode = TOOL_MODE_CREATE}) end
-	if wallModeButton then table.insert(activeModes, {btn = wallModeButton, mode = TOOL_MODE_WALL}) end
-	if roomModeButton then table.insert(activeModes, {btn = roomModeButton, mode = TOOL_MODE_ROOM}) end
-	if lightModeButton then table.insert(activeModes, {btn = lightModeButton, mode = TOOL_MODE_LIGHT}) end
+	if selectModeButton then
+		table.insert(activeModes, {btn = selectModeButton, mode = TOOL_MODE_SELECT})
+	end
+
+	if createModeButton then
+		table.insert(activeModes, {btn = createModeButton, mode = TOOL_MODE_CREATE})
+	end
+
+	if wallModeButton then
+		table.insert(activeModes, {btn = wallModeButton, mode = TOOL_MODE_WALL})
+	end
+
+	if roomModeButton then
+		table.insert(activeModes, {btn = roomModeButton, mode = TOOL_MODE_ROOM})
+	end
+
+	if lightModeButton then
+		table.insert(activeModes, {btn = lightModeButton, mode = TOOL_MODE_LIGHT})
+	end
 
 	table.sort(activeModes, function(a, b)
 		return a.btn.AbsolutePosition.Y < b.btn.AbsolutePosition.Y
 	end)
 
 	local ordered = {}
-	for _, item in ipairs(activeModes) do
+
+	for _, item in activeModes do
 		table.insert(ordered, item.mode)
 	end
+
 	return ordered
 end
 
 local function update_mode_buttons(): ()
-	if selectModeButton then selectModeButton.BackgroundColor3 = toolMode == TOOL_MODE_SELECT and ACTIVE_BUTTON_COLOR or INACTIVE_BUTTON_COLOR end
-	if createModeButton then createModeButton.BackgroundColor3 = toolMode == TOOL_MODE_CREATE and ACTIVE_BUTTON_COLOR or INACTIVE_BUTTON_COLOR end
-	if wallModeButton then wallModeButton.BackgroundColor3 = toolMode == TOOL_MODE_WALL and ACTIVE_BUTTON_COLOR or INACTIVE_BUTTON_COLOR end
-	if roomModeButton then roomModeButton.BackgroundColor3 = toolMode == TOOL_MODE_ROOM and ACTIVE_BUTTON_COLOR or INACTIVE_BUTTON_COLOR end
-	if lightModeButton then lightModeButton.BackgroundColor3 = toolMode == TOOL_MODE_LIGHT and ACTIVE_BUTTON_COLOR or INACTIVE_BUTTON_COLOR end
+	if selectModeButton then
+		selectModeButton.BackgroundColor3 = toolMode == TOOL_MODE_SELECT and ACTIVE_BUTTON_COLOR or INACTIVE_BUTTON_COLOR
+	end
+
+	if createModeButton then
+		createModeButton.BackgroundColor3 = toolMode == TOOL_MODE_CREATE and ACTIVE_BUTTON_COLOR or INACTIVE_BUTTON_COLOR
+	end
+
+	if wallModeButton then
+		wallModeButton.BackgroundColor3 = toolMode == TOOL_MODE_WALL and ACTIVE_BUTTON_COLOR or INACTIVE_BUTTON_COLOR
+	end
+
+	if roomModeButton then
+		roomModeButton.BackgroundColor3 = toolMode == TOOL_MODE_ROOM and ACTIVE_BUTTON_COLOR or INACTIVE_BUTTON_COLOR
+	end
+
+	if lightModeButton then
+		lightModeButton.BackgroundColor3 = toolMode == TOOL_MODE_LIGHT and ACTIVE_BUTTON_COLOR or INACTIVE_BUTTON_COLOR
+	end
 end
 
 local function get_root_part_for_character(targetModel: Model): BasePart?
-	if not targetModel then return nil end
+	if not targetModel then
+		return nil
+	end
+
 	local rootPart = targetModel:FindFirstChild("HumanoidRootPart")
 	if rootPart and rootPart:IsA("BasePart") then
 		return rootPart
 	end
+
 	return nil
 end
 
@@ -512,9 +664,17 @@ local function clear_selection(): ()
 
 	ensure_handles()
 
-	if moveHandles then moveHandles.Adornee = nil end
-	if resizeHandles then resizeHandles.Adornee = nil end
-	if rotateHandles then rotateHandles.Adornee = nil end
+	if moveHandles then
+		moveHandles.Adornee = nil
+	end
+
+	if resizeHandles then
+		resizeHandles.Adornee = nil
+	end
+
+	if rotateHandles then
+		rotateHandles.Adornee = nil
+	end
 
 	clear_hover_highlight()
 end
@@ -539,9 +699,17 @@ local function update_handles_for_selection(): ()
 
 		currentHighlight.Adornee = selectedCharacter
 
-		if moveHandles then moveHandles.Adornee = rootPart end
-		if resizeHandles then resizeHandles.Adornee = nil end
-		if rotateHandles then rotateHandles.Adornee = rootPart end
+		if moveHandles then
+			moveHandles.Adornee = rootPart
+		end
+
+		if resizeHandles then
+			resizeHandles.Adornee = nil
+		end
+
+		if rotateHandles then
+			rotateHandles.Adornee = rootPart
+		end
 
 		set_status("Selecionado: personagem")
 		return
@@ -551,9 +719,17 @@ local function update_handles_for_selection(): ()
 		currentHighlight.Adornee = nil
 		clear_hover_highlight()
 
-		if moveHandles then moveHandles.Adornee = nil end
-		if resizeHandles then resizeHandles.Adornee = nil end
-		if rotateHandles then rotateHandles.Adornee = nil end
+		if moveHandles then
+			moveHandles.Adornee = nil
+		end
+
+		if resizeHandles then
+			resizeHandles.Adornee = nil
+		end
+
+		if rotateHandles then
+			rotateHandles.Adornee = nil
+		end
 
 		return
 	end
@@ -561,9 +737,17 @@ local function update_handles_for_selection(): ()
 	if selectedKind == "Part" and selectedPart then
 		currentHighlight.Adornee = selectedPart
 
-		if moveHandles then moveHandles.Adornee = selectedPart end
-		if resizeHandles then resizeHandles.Adornee = selectedPart end
-		if rotateHandles then rotateHandles.Adornee = selectedPart end
+		if moveHandles then
+			moveHandles.Adornee = selectedPart
+		end
+
+		if resizeHandles then
+			resizeHandles.Adornee = selectedPart
+		end
+
+		if rotateHandles then
+			rotateHandles.Adornee = selectedPart
+		end
 
 		set_status("Selecionado: parte")
 		return
@@ -578,9 +762,17 @@ local function set_selected_part(partObj: BasePart): ()
 	selectedCharacter = nil
 	stop_character_mouse_drag()
 
-	if sizeXBox then sizeXBox.Text = tostring(partObj.Size.X) end
-	if sizeYBox then sizeYBox.Text = tostring(partObj.Size.Y) end
-	if sizeZBox then sizeZBox.Text = tostring(partObj.Size.Z) end
+	if sizeXBox then
+		sizeXBox.Text = tostring(partObj.Size.X)
+	end
+
+	if sizeYBox then
+		sizeYBox.Text = tostring(partObj.Size.Y)
+	end
+
+	if sizeZBox then
+		sizeZBox.Text = tostring(partObj.Size.Z)
+	end
 
 	sync_color_boxes_from_part(partObj)
 	update_handles_for_selection()
@@ -604,6 +796,7 @@ local function is_pointer_over_gui(): boolean
 			end
 		end
 	end
+
 	return false
 end
 
@@ -617,9 +810,17 @@ local function build_raycast_result(): RaycastResult?
 
 	local filterList = {}
 
-	if player.Character then table.insert(filterList, player.Character) end
-	if previewPart then table.insert(filterList, previewPart) end
-	for _, p in roomPreviewParts do table.insert(filterList, p) end
+	if player.Character then
+		table.insert(filterList, player.Character)
+	end
+
+	if previewPart then
+		table.insert(filterList, previewPart)
+	end
+
+	for _, preview in roomPreviewParts do
+		table.insert(filterList, preview)
+	end
 
 	local canSelectCharacters = toolMode == TOOL_MODE_NONE or toolMode == TOOL_MODE_SELECT or not is_sidebar_visible()
 	if not canSelectCharacters then
@@ -637,7 +838,9 @@ local function resolve_click_target(): (string, BasePart?, Model?)
 	local mouse = player:GetMouse()
 	local instance = mouse.Target
 
-	if not instance then return "", nil, nil end
+	if not instance then
+		return "", nil, nil
+	end
 
 	if instance:IsA("BasePart") then
 		local targetVal = instance:FindFirstChild("TargetCharacter")
@@ -686,23 +889,24 @@ local function update_hover_highlight(): ()
 
 	local canHoverParts = is_sidebar_visible() and toolMode == TOOL_MODE_SELECT
 	local canHoverCharacters = toolMode == TOOL_MODE_NONE or toolMode == TOOL_MODE_SELECT or not is_sidebar_visible()
-	local a, b, c = resolve_click_target()
+	local targetKind, targetPart, foundCharacter = resolve_click_target()
 
-	kind = a
-	part = b
-	targetCharacter = c
+	kind = targetKind
+	part = targetPart
+	targetCharacter = foundCharacter
 
-	if a == "Part" and b and canHoverParts then
-		if selectedKind == "Part" and selectedPart == b then
+	if targetKind == "Part" and targetPart and canHoverParts then
+		if selectedKind == "Part" and selectedPart == targetPart then
 			currentHoverHighlight.Adornee = nil
 			return
 		end
-		currentHoverHighlight.Adornee = b
+
+		currentHoverHighlight.Adornee = targetPart
 		return
 	end
 
-	if a == "Character" and c and canHoverCharacters then
-		if not can_drag_character(c) then
+	if targetKind == "Character" and foundCharacter and canHoverCharacters then
+		if not can_drag_character(foundCharacter) then
 			currentHoverHighlight.Adornee = nil
 			return
 		end
@@ -710,7 +914,7 @@ local function update_hover_highlight(): ()
 		if hitboxesFolder then
 			for _, hb in hitboxesFolder:GetChildren() do
 				local targetVal = hb:FindFirstChild("TargetCharacter")
-				if targetVal and targetVal.Value == c then
+				if targetVal and targetVal.Value == foundCharacter then
 					hb.Transparency = 0.8
 					hb.Color = Color3.fromRGB(120, 200, 255)
 					hb.Material = Enum.Material.ForceField
@@ -719,12 +923,12 @@ local function update_hover_highlight(): ()
 			end
 		end
 
-		if selectedKind == "Character" and selectedCharacter == c then
+		if selectedKind == "Character" and selectedCharacter == foundCharacter then
 			currentHoverHighlight.Adornee = nil
 			return
 		end
 
-		currentHoverHighlight.Adornee = c
+		currentHoverHighlight.Adornee = foundCharacter
 		return
 	end
 
@@ -733,7 +937,10 @@ end
 
 local function get_snapped_hit_position(): Vector3?
 	local raycastResult = build_raycast_result()
-	if not raycastResult then return nil end
+	if not raycastResult then
+		return nil
+	end
+
 	return snap_vector3(raycastResult.Position, gridSize)
 end
 
@@ -742,10 +949,14 @@ local function get_mouse_point_on_horizontal_plane(planeY: number): Vector3?
 	local mouseLocation = UserInputService:GetMouseLocation()
 	local ray = currentCamera:ViewportPointToRay(mouseLocation.X, mouseLocation.Y)
 
-	if math.abs(ray.Direction.Y) < 0.0001 then return nil end
+	if math.abs(ray.Direction.Y) < 0.0001 then
+		return nil
+	end
 
 	local t = (planeY - ray.Origin.Y) / ray.Direction.Y
-	if t <= 0 then return nil end
+	if t <= 0 then
+		return nil
+	end
 
 	return ray.Origin + ray.Direction * t
 end
@@ -756,10 +967,14 @@ local function start_character_mouse_drag(targetModel: Model): ()
 	end
 
 	local rootPart = get_root_part_for_character(targetModel)
-	if not rootPart then return end
+	if not rootPart then
+		return
+	end
 
 	local planePoint = get_mouse_point_on_horizontal_plane(rootPart.Position.Y)
-	if not planePoint then return end
+	if not planePoint then
+		return
+	end
 
 	characterMouseDragActive = true
 	characterMouseDragTarget = targetModel
@@ -769,7 +984,9 @@ local function start_character_mouse_drag(targetModel: Model): ()
 end
 
 local function update_character_mouse_drag(): ()
-	if not characterMouseDragActive or not characterMouseDragTarget then return end
+	if not characterMouseDragActive or not characterMouseDragTarget then
+		return
+	end
 
 	if not can_drag_character(characterMouseDragTarget) then
 		stop_character_mouse_drag()
@@ -788,7 +1005,9 @@ local function update_character_mouse_drag(): ()
 	end
 
 	local planePoint = get_mouse_point_on_horizontal_plane(characterMouseDragPlaneY)
-	if not planePoint then return end
+	if not planePoint then
+		return
+	end
 
 	local targetPosition = Vector3.new(
 		snap_number(planePoint.X + characterMouseDragOffset.X, gridSize),
@@ -801,7 +1020,9 @@ local function update_character_mouse_drag(): ()
 
 	rootPart.CFrame = newCFrame
 
-	if nowTime - lastCharacterMouseDragSend < DRAG_SEND_INTERVAL then return end
+	if nowTime - lastCharacterMouseDragSend < DRAG_SEND_INTERVAL then
+		return
+	end
 
 	lastCharacterMouseDragSend = nowTime
 
@@ -813,44 +1034,65 @@ end
 
 local function get_wall_endpoint_candidates(): {Vector3}
 	local buildFolder = get_build_folder()
-	if not buildFolder then return {} end
+	if not buildFolder then
+		return {}
+	end
 
 	local points = {}
 
 	for _, child in buildFolder:GetChildren() do
-		if child:IsA("BasePart") and child:GetAttribute("BuildKind") == "Wall" then
-			local center = child.Position
-			local direction = child.CFrame.LookVector
-			local halfLength = child.Size.Z / 2
-			local baseY = center.Y - child.Size.Y / 2
-			local pointA = center - direction * halfLength
-			local pointB = center + direction * halfLength
-			table.insert(points, Vector3.new(pointA.X, baseY, pointA.Z))
-			table.insert(points, Vector3.new(pointB.X, baseY, pointB.Z))
+		if child:IsA("BasePart") then
+			local buildKind = child:GetAttribute("BuildKind")
+
+			if buildKind == "Wall" then
+				local center = child.Position
+				local lengthAxis = get_flat_wall_unit(child.CFrame.LookVector)
+				local halfLength = child.Size.Z * 0.5
+
+				if child.Size.X > child.Size.Z then
+					lengthAxis = get_flat_wall_unit(child.CFrame.RightVector)
+					halfLength = child.Size.X * 0.5
+				end
+
+				local baseY = center.Y - (child.Size.Y * 0.5)
+				local pointA = center - (lengthAxis * halfLength)
+				local pointB = center + (lengthAxis * halfLength)
+
+				table.insert(points, Vector3.new(pointA.X, baseY, pointA.Z))
+				table.insert(points, Vector3.new(pointB.X, baseY, pointB.Z))
+			end
 		end
 	end
 
 	return points
 end
 
-local function snap_wall_point(rawPoint: Vector3): Vector3
+local function snap_wall_point(rawPoint: Vector3, anchorPoint: Vector3?): Vector3
+	local snappedPoint = snap_vector3(rawPoint, gridSize)
+
 	if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift) then
-		return rawPoint
+		return snappedPoint
 	end
 
 	local candidates = get_wall_endpoint_candidates()
-	local bestPoint = rawPoint
+	local bestPoint = snappedPoint
 	local bestDistance = WALL_ENDPOINT_SNAP_DISTANCE
 
 	for _, point in candidates do
-		local distance = (Vector3.new(point.X, rawPoint.Y, point.Z) - rawPoint).Magnitude
+		local candidatePoint = Vector3.new(point.X, snappedPoint.Y, point.Z)
+		local distance = (Vector3.new(candidatePoint.X, 0, candidatePoint.Z) - Vector3.new(snappedPoint.X, 0, snappedPoint.Z)).Magnitude
+
 		if distance <= bestDistance then
 			bestDistance = distance
-			bestPoint = Vector3.new(point.X, point.Y, point.Z)
+			bestPoint = candidatePoint
 		end
 	end
 
-	return bestPoint
+	if anchorPoint then
+		bestPoint = Vector3.new(bestPoint.X, anchorPoint.Y, bestPoint.Z)
+	end
+
+	return snap_vector3(bestPoint, gridSize)
 end
 
 local function build_box_from_two_points(pointA: Vector3, pointB: Vector3, minSize: number): (CFrame, Vector3)
@@ -891,7 +1133,9 @@ end
 
 local function get_create_preview_cframe_and_size(): (CFrame?, Vector3?)
 	local currentPoint = get_snapped_hit_position()
-	if not currentPoint then return nil, nil end
+	if not currentPoint then
+		return nil, nil
+	end
 
 	if not createAnchor then
 		local cframe = CFrame.new(currentPoint + Vector3.new(0, gridSize / 2, 0))
@@ -906,7 +1150,7 @@ local function get_wall_preview_cframe_and_size(): (CFrame?, Vector3?)
 	local currentPoint = get_snapped_hit_position()
 	if not currentPoint then return nil, nil end
 
-	currentPoint = snap_wall_point(currentPoint)
+	currentPoint = snap_wall_point(currentPoint, wallAnchor)
 	local height = math.max(1, wallHeight)
 	local thickness = math.max(0.25, wallThickness)
 
@@ -924,13 +1168,18 @@ end
 
 local function get_light_preview_cframe_and_size(): (CFrame?, Vector3?)
 	local currentPoint = get_snapped_hit_position()
-	if not currentPoint then return nil, nil end
+	if not currentPoint then
+		return nil, nil
+	end
+
 	local cframe = CFrame.new(currentPoint + Vector3.new(0, createSize.Y / 2, 0))
 	return cframe, createSize
 end
 
 local function hide_room_preview(): ()
-	for _, p in roomPreviewParts do p.Transparency = 1 end
+	for _, preview in roomPreviewParts do
+		preview.Transparency = 1
+	end
 end
 
 local function hide_preview(): ()
@@ -956,26 +1205,46 @@ local function show_preview(cframe: CFrame, size: Vector3, isLight: boolean?): (
 	end
 end
 
+local function show_room_start_preview(position: Vector3): ()
+	local markerSize = Vector3.new(
+		math.max(0.5, gridSize),
+		math.max(0.5, gridSize),
+		math.max(0.5, gridSize)
+	)
+
+	local markerCFrame = CFrame.new(position + Vector3.new(0, markerSize.Y / 2, 0))
+	show_preview(markerCFrame, markerSize)
+end
+
 local function refresh_room_preview(): ()
 	local currentPoint = get_snapped_hit_position()
 	if not currentPoint then
+		ensure_preview_part().Transparency = 1
 		hide_room_preview()
 		return
 	end
 
+	if not RoomBuilder.Anchor then
+		hide_room_preview()
+		show_room_start_preview(currentPoint)
+		return
+	end
+
+	show_room_start_preview(RoomBuilder.Anchor)
+
 	local raycastResult = build_raycast_result()
 	local exactPos = raycastResult and raycastResult.Position or snap_wall_point(currentPoint)
-
 	local isShiftHeld = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
 
 	local partsData, _ = RoomBuilder.get_room_data(
-		exactPos, 
-		gridSize, 
-		wallHeight, 
-		wallThickness, 
-		4, 7.5, 
-		createWithFloor, 
-		createWithCeiling, 
+		exactPos,
+		gridSize,
+		roomHeight,
+		wallThickness,
+		4,
+		7.5,
+		createWithFloor,
+		createWithCeiling,
 		isShiftHeld
 	)
 
@@ -985,27 +1254,27 @@ local function refresh_room_preview(): ()
 	end
 
 	for i = #roomPreviewParts + 1, #partsData do
-		local p = Instance.new("Part")
-		p.Name = "MasterBuildRoomPreview"
-		p.Anchored = true
-		p.CanCollide = false
-		p.CanQuery = false
-		p.Material = Enum.Material.ForceField
-		p.TopSurface = Enum.SurfaceType.Smooth
-		p.BottomSurface = Enum.SurfaceType.Smooth
-		p.Parent = workspace
-		table.insert(roomPreviewParts, p)
+		local preview = Instance.new("Part")
+		preview.Name = "MasterBuildRoomPreview"
+		preview.Anchored = true
+		preview.CanCollide = false
+		preview.CanQuery = false
+		preview.Material = Enum.Material.ForceField
+		preview.TopSurface = Enum.SurfaceType.Smooth
+		preview.BottomSurface = Enum.SurfaceType.Smooth
+		preview.Parent = workspace
+		table.insert(roomPreviewParts, preview)
 	end
 
-	for i, p in ipairs(roomPreviewParts) do
+	for i, preview in roomPreviewParts do
 		if i <= #partsData then
 			local data = partsData[i]
-			p.Size = data.Size
-			p.CFrame = data.CFrame
-			p.Color = buildColor
-			p.Transparency = PREVIEW_TRANSPARENCY
+			preview.Size = data.Size
+			preview.CFrame = data.CFrame
+			preview.Color = buildColor
+			preview.Transparency = PREVIEW_TRANSPARENCY
 		else
-			p.Transparency = 1
+			preview.Transparency = 1
 		end
 	end
 end
@@ -1040,7 +1309,6 @@ local function refresh_preview(): ()
 	end
 
 	if toolMode == TOOL_MODE_ROOM then
-		ensure_preview_part().Transparency = 1 
 		refresh_room_preview()
 		return
 	end
@@ -1061,6 +1329,7 @@ local function apply_inputs_to_state(): ()
 	gridSize = sanitize_text_number(gridBox and gridBox.Text or tostring(DEFAULT_GRID_SIZE), DEFAULT_GRID_SIZE, 0.25)
 	wallHeight = sanitize_text_number(wallHeightBox and wallHeightBox.Text or tostring(DEFAULT_WALL_HEIGHT), DEFAULT_WALL_HEIGHT, 1)
 	wallThickness = sanitize_text_number(wallThicknessBox and wallThicknessBox.Text or tostring(DEFAULT_WALL_THICKNESS), DEFAULT_WALL_THICKNESS, 0.25)
+	roomHeight = sanitize_text_number(roomHeightBox and roomHeightBox.Text or tostring(wallHeight), wallHeight, 1)
 
 	local sizeX = sanitize_text_number(sizeXBox and sizeXBox.Text or tostring(DEFAULT_CREATE_SIZE.X), DEFAULT_CREATE_SIZE.X, 1)
 	local sizeY = sanitize_text_number(sizeYBox and sizeYBox.Text or tostring(DEFAULT_CREATE_SIZE.Y), DEFAULT_CREATE_SIZE.Y, 1)
@@ -1089,7 +1358,7 @@ local function set_tool_mode(newMode: string): ()
 	end
 
 	if roomSettingsFrame then
-		roomSettingsFrame.Visible = (toolMode == TOOL_MODE_ROOM)
+		roomSettingsFrame.Visible = toolMode == TOOL_MODE_ROOM
 	end
 
 	if toolMode == TOOL_MODE_NONE then
@@ -1104,9 +1373,18 @@ local function set_tool_mode(newMode: string): ()
 		set_status("Modo sala")
 	elseif toolMode == TOOL_MODE_LIGHT then
 		set_status("Modo luz")
-		if colorRBox then colorRBox.Text = tostring(math.floor(DEFAULT_LIGHT_COLOR.R * 255)) end
-		if colorGBox then colorGBox.Text = tostring(math.floor(DEFAULT_LIGHT_COLOR.G * 255)) end
-		if colorBBox then colorBBox.Text = tostring(math.floor(DEFAULT_LIGHT_COLOR.B * 255)) end
+		if colorRBox then
+			colorRBox.Text = tostring(math.floor(DEFAULT_LIGHT_COLOR.R * 255))
+		end
+
+		if colorGBox then
+			colorGBox.Text = tostring(math.floor(DEFAULT_LIGHT_COLOR.G * 255))
+		end
+
+		if colorBBox then
+			colorBBox.Text = tostring(math.floor(DEFAULT_LIGHT_COLOR.B * 255))
+		end
+
 		apply_inputs_to_state()
 	end
 
@@ -1123,8 +1401,13 @@ local function create_current_preview_part(): ()
 	end
 
 	local partKind = "Part"
-	if toolMode == TOOL_MODE_WALL then partKind = "Wall" end
-	if toolMode == TOOL_MODE_LIGHT then partKind = "Light" end
+	if toolMode == TOOL_MODE_WALL then
+		partKind = "Wall"
+	end
+
+	if toolMode == TOOL_MODE_LIGHT then
+		partKind = "Light"
+	end
 
 	fire_build("CreatePart", {
 		Size = partObj.Size,
@@ -1206,7 +1489,9 @@ end
 
 local function handle_create_click(): ()
 	local currentPoint = get_snapped_hit_position()
-	if not currentPoint then return end
+	if not currentPoint then
+		return
+	end
 
 	if not createAnchor then
 		createAnchor = currentPoint
@@ -1225,7 +1510,7 @@ local function handle_wall_click(): ()
 	local currentPoint = get_snapped_hit_position()
 	if not currentPoint then return end
 
-	currentPoint = snap_wall_point(currentPoint)
+	currentPoint = snap_wall_point(currentPoint, wallAnchor)
 
 	if not wallAnchor then
 		wallAnchor = currentPoint
@@ -1242,7 +1527,10 @@ end
 
 local function handle_room_click(): ()
 	local currentPoint = get_snapped_hit_position()
-	if not currentPoint then return end
+	if not currentPoint then
+		return
+	end
+
 	currentPoint = snap_wall_point(currentPoint)
 
 	if not RoomBuilder.Anchor then
@@ -1257,13 +1545,14 @@ local function handle_room_click(): ()
 	local isShiftHeld = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
 
 	local _, hoveringDoor = RoomBuilder.get_room_data(
-		exactPos, 
-		gridSize, 
-		wallHeight, 
-		wallThickness, 
-		4, 7.5, 
-		createWithFloor, 
-		createWithCeiling, 
+		exactPos,
+		gridSize,
+		roomHeight,
+		wallThickness,
+		4,
+		7.5,
+		createWithFloor,
+		createWithCeiling,
 		isShiftHeld
 	)
 
@@ -1271,15 +1560,27 @@ local function handle_room_click(): ()
 		if not RoomBuilder.LockedB then
 			RoomBuilder.LockedB = currentPoint
 		end
+
 		if hoveringDoor then
 			RoomBuilder.add_door(hoveringDoor.CFrame, hoveringDoor.Size)
 			set_status("Sala: porta adicionada (solte Shift para criar)")
 		end
+
 		refresh_preview()
 		return
 	end
 
-	local finalParts, _ = RoomBuilder.get_room_data(exactPos, gridSize, wallHeight, wallThickness, 4, 7.5, createWithFloor, createWithCeiling, false)
+	local finalParts, _ = RoomBuilder.get_room_data(
+		exactPos,
+		gridSize,
+		roomHeight,
+		wallThickness,
+		4,
+		7.5,
+		createWithFloor,
+		createWithCeiling,
+		false
+	)
 
 	local roomId = HttpService:GenerateGUID(false)
 	fire_build("CreateRoomParts", {
@@ -1296,7 +1597,9 @@ end
 
 local function handle_light_click(): ()
 	local currentPoint = get_snapped_hit_position()
-	if not currentPoint then return end
+	if not currentPoint then
+		return
+	end
 
 	create_current_preview_part()
 	set_status("Luz criada")
@@ -1326,6 +1629,7 @@ local function handle_world_left_click(): ()
 		if selectedCharacter ~= targetCharacter then
 			set_selected_character(targetCharacter)
 		end
+
 		start_character_mouse_drag(targetCharacter)
 		return
 	end
@@ -1514,6 +1818,7 @@ local function update_selected_part_rotation(relativeAngle: number): ()
 		if rootPart then
 			rootPart.CFrame = newCFrame
 		end
+
 		maybe_send_drag_update(time(), function()
 			fire_build("MoveCharacter", {
 				Character = selectedCharacter,
@@ -1524,31 +1829,59 @@ local function update_selected_part_rotation(relativeAngle: number): ()
 end
 
 local function connect_handles(): ()
-	if handlesConnected then return end
+	if handlesConnected then
+		return
+	end
 
 	ensure_handles()
 	handlesConnected = true
 
 	if moveHandles then
-		moveHandles.MouseButton1Down:Connect(function(face: Enum.NormalId) begin_drag("Move", face) end)
-		moveHandles.MouseButton1Up:Connect(function() finish_gizmo_drag() end)
+		moveHandles.MouseButton1Down:Connect(function(face: Enum.NormalId)
+			begin_drag("Move", face)
+		end)
+
+		moveHandles.MouseButton1Up:Connect(function()
+			finish_gizmo_drag()
+		end)
+
 		moveHandles.MouseDrag:Connect(function(face: Enum.NormalId, distance: number)
-			if selectedKind == "Part" then update_selected_part_from_drag(distance) return end
-			if selectedKind == "Character" then update_selected_character_from_drag(distance) end
+			if selectedKind == "Part" then
+				update_selected_part_from_drag(distance)
+				return
+			end
+
+			if selectedKind == "Character" then
+				update_selected_character_from_drag(distance)
+			end
 		end)
 	end
 
 	if resizeHandles then
-		resizeHandles.MouseButton1Down:Connect(function(face: Enum.NormalId) begin_drag("Resize", face) end)
-		resizeHandles.MouseButton1Up:Connect(function() finish_gizmo_drag() end)
+		resizeHandles.MouseButton1Down:Connect(function(face: Enum.NormalId)
+			begin_drag("Resize", face)
+		end)
+
+		resizeHandles.MouseButton1Up:Connect(function()
+			finish_gizmo_drag()
+		end)
+
 		resizeHandles.MouseDrag:Connect(function(face: Enum.NormalId, distance: number)
-			if selectedKind == "Part" then update_selected_part_from_drag(distance) end
+			if selectedKind == "Part" then
+				update_selected_part_from_drag(distance)
+			end
 		end)
 	end
 
 	if rotateHandles then
-		rotateHandles.MouseButton1Down:Connect(function(axis: Enum.Axis) begin_rotate(axis) end)
-		rotateHandles.MouseButton1Up:Connect(function() finish_gizmo_drag() end)
+		rotateHandles.MouseButton1Down:Connect(function(axis: Enum.Axis)
+			begin_rotate(axis)
+		end)
+
+		rotateHandles.MouseButton1Up:Connect(function()
+			finish_gizmo_drag()
+		end)
+
 		rotateHandles.MouseDrag:Connect(function(axis: Enum.Axis, relativeAngle: number)
 			dragAxis = axis
 			update_selected_part_rotation(relativeAngle)
@@ -1557,8 +1890,13 @@ local function connect_handles(): ()
 end
 
 local function connect_buttons(): ()
-	if buttonsConnected then return end
-	if not buildToggleButton or not buildSidebar then return end
+	if buttonsConnected then
+		return
+	end
+
+	if not buildToggleButton or not buildSidebar then
+		return
+	end
 
 	buttonsConnected = true
 
@@ -1581,12 +1919,41 @@ local function connect_buttons(): ()
 		end
 	end)
 
-	if selectModeButton then selectModeButton.MouseButton1Click:Connect(function() set_tool_mode(TOOL_MODE_SELECT) end) end
-	if createModeButton then createModeButton.MouseButton1Click:Connect(function() set_tool_mode(TOOL_MODE_CREATE) end) end
-	if wallModeButton then wallModeButton.MouseButton1Click:Connect(function() set_tool_mode(TOOL_MODE_WALL) end) end
-	if roomModeButton then roomModeButton.MouseButton1Click:Connect(function() set_tool_mode(TOOL_MODE_ROOM) end) end
-	if lightModeButton then lightModeButton.MouseButton1Click:Connect(function() set_tool_mode(TOOL_MODE_LIGHT) end) end
-	if deleteButton then deleteButton.MouseButton1Click:Connect(function() delete_selected_target() end) end
+	if selectModeButton then
+		selectModeButton.MouseButton1Click:Connect(function()
+			set_tool_mode(TOOL_MODE_SELECT)
+		end)
+	end
+
+	if createModeButton then
+		createModeButton.MouseButton1Click:Connect(function()
+			set_tool_mode(TOOL_MODE_CREATE)
+		end)
+	end
+
+	if wallModeButton then
+		wallModeButton.MouseButton1Click:Connect(function()
+			set_tool_mode(TOOL_MODE_WALL)
+		end)
+	end
+
+	if roomModeButton then
+		roomModeButton.MouseButton1Click:Connect(function()
+			set_tool_mode(TOOL_MODE_ROOM)
+		end)
+	end
+
+	if lightModeButton then
+		lightModeButton.MouseButton1Click:Connect(function()
+			set_tool_mode(TOOL_MODE_LIGHT)
+		end)
+	end
+
+	if deleteButton then
+		deleteButton.MouseButton1Click:Connect(function()
+			delete_selected_target()
+		end)
+	end
 
 	if roomFloorButton then
 		roomFloorButton.MouseButton1Click:Connect(function()
@@ -1595,6 +1962,7 @@ local function connect_buttons(): ()
 			refresh_preview()
 		end)
 	end
+
 	if roomCeilingButton then
 		roomCeilingButton.MouseButton1Click:Connect(function()
 			createWithCeiling = not createWithCeiling
@@ -1606,10 +1974,12 @@ local function connect_buttons(): ()
 	if applySizeButton then
 		applySizeButton.MouseButton1Click:Connect(function()
 			apply_inputs_to_state()
+
 			if toolMode == TOOL_MODE_SELECT and selectedKind == "Part" then
 				apply_size_to_selected_part()
 				return
 			end
+
 			set_status("Valores atualizados")
 		end)
 	end
@@ -1617,10 +1987,12 @@ local function connect_buttons(): ()
 	if applyColorButton then
 		applyColorButton.MouseButton1Click:Connect(function()
 			apply_inputs_to_state()
+
 			if toolMode == TOOL_MODE_SELECT and selectedKind == "Part" then
 				apply_color_to_selected_part()
 				return
 			end
+
 			refresh_preview()
 			set_status("Cor atualizada")
 		end)
@@ -1646,12 +2018,15 @@ local function connect_buttons(): ()
 end
 
 local function on_gui_added(child: Instance): ()
-	if child.Name ~= GUI_NAME then return end
+	if child.Name ~= GUI_NAME then
+		return
+	end
 
 	buttonsConnected = false
 
 	task.defer(function()
 		cache_gui_objects()
+		sync_room_height_default()
 		sync_boxes_from_state()
 		update_mode_buttons()
 		connect_buttons()
@@ -1747,7 +2122,9 @@ RunService.RenderStepped:Connect(function()
 end)
 
 UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
-	if gameProcessed then return end
+	if gameProcessed then
+		return
+	end
 
 	if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
 		if toolMode == TOOL_MODE_ROOM and RoomBuilder.Anchor then
@@ -1764,6 +2141,7 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 		if selectedMode then
 			set_tool_mode(selectedMode)
 		end
+
 		return
 	end
 
@@ -1810,7 +2188,17 @@ UserInputService.InputEnded:Connect(function(input: InputObject)
 
 	if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
 		if toolMode == TOOL_MODE_ROOM and RoomBuilder.Anchor and RoomBuilder.LockedB then
-			local finalParts, _ = RoomBuilder.get_room_data(RoomBuilder.LockedB, gridSize, wallHeight, wallThickness, 4, 7.5, createWithFloor, createWithCeiling, false)
+			local finalParts, _ = RoomBuilder.get_room_data(
+				RoomBuilder.LockedB,
+				gridSize,
+				roomHeight,
+				wallThickness,
+				4,
+				7.5,
+				createWithFloor,
+				createWithCeiling,
+				false
+			)
 
 			local roomId = HttpService:GenerateGUID(false)
 			fire_build("CreateRoomParts", {
@@ -1847,6 +2235,7 @@ playerGui.ChildAdded:Connect(on_gui_added)
 
 ------------------//INIT
 cache_gui_objects()
+sync_room_height_default()
 sync_boxes_from_state()
 ensure_preview_part()
 ensure_highlight()

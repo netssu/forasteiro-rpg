@@ -1,6 +1,5 @@
 ------------------//SERVICES
 local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
-local ServerStorage: ServerStorage = game:GetService("ServerStorage")
 
 ------------------//CONSTANTS
 local REMOTE_NAME: string = "MasterBuildEvent"
@@ -10,7 +9,7 @@ local assetsFolder: Folder = ReplicatedStorage:WaitForChild("Assets")
 local remotesFolder: Folder = assetsFolder:WaitForChild("Remotes")
 local masterBuildEvent: RemoteEvent = remotesFolder:WaitForChild(REMOTE_NAME)
 
-local MasterBuildManager = require(ServerStorage.Modules.Game.MasterBuildManager)
+local MasterBuildManager = require(ReplicatedStorage.Modules.Game.MasterBuildManager)
 
 ------------------//MAIN FUNCTIONS
 masterBuildEvent.OnServerEvent:Connect(MasterBuildManager.process_request)
