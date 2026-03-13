@@ -13,6 +13,7 @@ local ROLE_TOKEN_FRONT_IMAGE_NAME: string = "RoleTokenFrontImage"
 local ROLE_TOKEN_BACK_IMAGE_NAME: string = "RoleTokenBackImage"
 
 local ROLE_IMAGE_ATTRIBUTE_NAME: string = "RoleImageId"
+local TOKEN_SCALE_ATTRIBUTE_NAME: string = "TokenScale"
 local TOKEN_FORWARD_OFFSET: number = 0
 local TOKEN_THICKNESS: number = 0.05
 local TOKEN_MIN_WIDTH: number = 3
@@ -129,14 +130,39 @@ local function get_character_image_asset(character: Model): string
 end
 
 local function get_character_height(character: Model): number
-	local _, size = character:GetBoundingBox()
-	return math.max(TOKEN_MIN_HEIGHT, size.Y)
+	local minY = math.huge
+	local maxY = -math.huge
+
+	for _, descendant in character:GetDescendants() do
+		if descendant:IsA("BasePart") and descendant.Name ~= ROLE_TOKEN_PART_NAME then
+			local pos = descendant.Position
+			local halfY = descendant.Size.Y / 2
+			local partMinY = pos.Y - halfY
+			local partMaxY = pos.Y + halfY
+
+			if partMinY < minY then
+				minY = partMinY
+			end
+
+			if partMaxY > maxY then
+				maxY = partMaxY
+			end
+		end
+	end
+
+	if minY == math.huge or maxY == -math.huge then
+		local _, size = character:GetBoundingBox()
+		return math.max(TOKEN_MIN_HEIGHT, size.Y)
+	end
+
+	return math.max(TOKEN_MIN_HEIGHT, maxY - minY)
 end
 
 local function get_token_size(character: Model): Vector3
 	local height = get_character_height(character)
 	local width = math.max(TOKEN_MIN_WIDTH, height * TOKEN_WIDTH_RATIO)
-	local scale = character:GetAttribute("TokenScale") or 1
+	local rawScale = character:GetAttribute(TOKEN_SCALE_ATTRIBUTE_NAME)
+	local scale = typeof(rawScale) == "number" and math.clamp(rawScale, 0.1, 10) or 1
 
 	return Vector3.new(width * scale, height * scale, TOKEN_THICKNESS)
 end
@@ -404,6 +430,10 @@ function RoleManager.initialize_character(character: Model): ()
 	end
 
 	character:GetAttributeChangedSignal(ROLE_IMAGE_ATTRIBUTE_NAME):Connect(function()
+		RoleManager.apply_role_state(character)
+	end)
+
+	character:GetAttributeChangedSignal(TOKEN_SCALE_ATTRIBUTE_NAME):Connect(function()
 		RoleManager.apply_role_state(character)
 	end)
 
