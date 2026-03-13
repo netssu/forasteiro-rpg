@@ -122,10 +122,6 @@ local function should_room_replace_wall(newKind: string, newSize: Vector3, newCF
 	return have_similar_wall_orientation(newSize, newCFrame, existingPart.Size, existingPart.CFrame)
 end
 
-local function is_door_frame_segment(part: BasePart): boolean
-	return part:GetAttribute("IsDoorFrameSegment") == true
-end
-
 local collect_overlapping_build_parts: (size: Vector3, cframe: CFrame) -> {BasePart}
 
 local function subtract_wall_overlap(wallSize: Vector3, wallCFrame: CFrame, cutSize: Vector3, cutCFrame: CFrame): {{Size: Vector3, CFrame: CFrame}}
@@ -186,24 +182,18 @@ local function subtract_wall_overlap(wallSize: Vector3, wallCFrame: CFrame, cutS
 	return parts
 end
 
-local function resolve_room_wall_fragments(size: Vector3, cframe: CFrame, buildKind: string): ({{Size: Vector3, CFrame: CFrame}}, {[BasePart]: boolean})
+local function resolve_room_wall_fragments(size: Vector3, cframe: CFrame, buildKind: string): {{Size: Vector3, CFrame: CFrame}}
 	local fragments = {{Size = size, CFrame = cframe}}
 	local overlaps = collect_overlapping_build_parts(size, cframe)
-	local partsToDestroy = {}
 
 	for _, hitPart in overlaps do
 		local nextFragments = {}
 
 		for _, fragment in fragments do
 			if should_room_replace_wall(buildKind, fragment.Size, fragment.CFrame, hitPart) then
-				if is_door_frame_segment(hitPart) then
-					local sliced = subtract_wall_overlap(fragment.Size, fragment.CFrame, hitPart.Size, hitPart.CFrame)
-					for _, slicedPart in sliced do
-						table.insert(nextFragments, slicedPart)
-					end
-				else
-					partsToDestroy[hitPart] = true
-					table.insert(nextFragments, fragment)
+				local sliced = subtract_wall_overlap(fragment.Size, fragment.CFrame, hitPart.Size, hitPart.CFrame)
+				for _, slicedPart in sliced do
+					table.insert(nextFragments, slicedPart)
 				end
 			else
 				table.insert(nextFragments, fragment)
@@ -213,7 +203,23 @@ local function resolve_room_wall_fragments(size: Vector3, cframe: CFrame, buildK
 		fragments = nextFragments
 	end
 
-	return fragments, partsToDestroy
+	return fragments
+end
+
+local function resolve_existing_wall_fragments(size: Vector3, cframe: CFrame, buildKind: string): ({[BasePart]: {{Size: Vector3, CFrame: CFrame}}}, {[BasePart]: boolean})
+	local overlaps = collect_overlapping_build_parts(size, cframe)
+	local replacementsByPart = {}
+	local partsToDestroy = {}
+
+	for _, hitPart in overlaps do
+		if should_room_replace_wall(buildKind, size, cframe, hitPart) then
+			local sliced = subtract_wall_overlap(hitPart.Size, hitPart.CFrame, size, cframe)
+			replacementsByPart[hitPart] = sliced
+			partsToDestroy[hitPart] = true
+		end
+	end
+
+	return replacementsByPart, partsToDestroy
 end
 
 collect_overlapping_build_parts = function(size: Vector3, cframe: CFrame): {BasePart}
@@ -291,7 +297,7 @@ local function apply_extra_attributes(part: BasePart, extraAttributes: {[string]
 	end
 end
 
-local function create_build_part(size: Vector3, cframe: CFrame, color: Color3?, buildKind: string?, lightRange: number?, lightBrightness: number?, extraAttributes: {[string]: any}?, allowRoomReplacement: boolean?): BasePart?
+local function create_build_part(size: Vector3, cframe: CFrame, color: Color3?, buildKind: string?, lightRange: number?, lightBrightness: number?, extraAttributes: {[string]: any}?, allowRoomReplacement: boolean?, preferNewWall: boolean?): BasePart?
 	local folder = get_build_folder()
 	if not folder then
 		return nil
@@ -303,10 +309,37 @@ local function create_build_part(size: Vector3, cframe: CFrame, color: Color3?, 
 
 	if allowRoomReplacement == true then
 		if is_wall_like_kind(finalKind, finalSize) then
-			local partsToDestroy
-			fragments, partsToDestroy = resolve_room_wall_fragments(finalSize, cframe, finalKind)
-			for partToDestroy in partsToDestroy do
-				partToDestroy:Destroy()
+			local shouldPreferNewWall = preferNewWall == true
+
+			if shouldPreferNewWall then
+				local replacementsByPart, partsToDestroy = resolve_existing_wall_fragments(finalSize, cframe, finalKind)
+				for partToDestroy in partsToDestroy do
+					local sourceColor = partToDestroy.Color
+					local sourceKind = get_build_kind(partToDestroy)
+					local sourceAttributes = partToDestroy:GetAttributes()
+					partToDestroy:Destroy()
+
+					local replacements = replacementsByPart[partToDestroy]
+					if replacements then
+						for _, replacement in replacements do
+							local replacementPart = Instance.new("Part")
+							replacementPart.Name = "BuildPart"
+							replacementPart.Anchored = true
+							replacementPart.CanCollide = true
+							replacementPart.CanTouch = true
+							replacementPart.CanQuery = true
+							replacementPart.Size = sanitize_size(replacement.Size)
+							replacementPart.CFrame = replacement.CFrame
+							apply_part_visuals(replacementPart, sourceColor, sourceKind, nil, nil)
+							for attributeName, attributeValue in sourceAttributes do
+								replacementPart:SetAttribute(attributeName, attributeValue)
+							end
+							replacementPart.Parent = folder
+						end
+					end
+				end
+			else
+				fragments = resolve_room_wall_fragments(finalSize, cframe, finalKind)
 			end
 		else
 			destroy_room_overlapping_walls(finalSize, cframe, finalKind)
@@ -400,7 +433,7 @@ function MasterBuildManager.process_request(player: Player, payload: any): ()
 		local lightRange = typeof(payload.LightRange) == "number" and payload.LightRange or nil
 		local lightBrightness = typeof(payload.LightBrightness) == "number" and payload.LightBrightness or nil
 
-		create_build_part(payload.Size, payload.CFrame, color, buildKind, lightRange, lightBrightness, nil, false)
+		create_build_part(payload.Size, payload.CFrame, color, buildKind, lightRange, lightBrightness, nil, false, false)
 		return
 	end
 
@@ -411,6 +444,7 @@ function MasterBuildManager.process_request(player: Player, payload: any): ()
 
 		local color = typeof(payload.Color) == "Color3" and payload.Color or nil
 		local roomId = typeof(payload.RoomId) == "string" and payload.RoomId or nil
+		local roomHasDoors = typeof(payload.Doors) == "table" and #payload.Doors > 0
 
 		for _, partData in payload.Parts do
 			if typeof(partData) == "table"
@@ -420,7 +454,6 @@ function MasterBuildManager.process_request(player: Player, payload: any): ()
 				if roomId then
 					extraAttributes.RoomId = roomId
 				end
-
 				if typeof(partData.ExtraAttributes) == "table" then
 					for attributeName, attributeValue in partData.ExtraAttributes do
 						extraAttributes[attributeName] = attributeValue
@@ -435,7 +468,8 @@ function MasterBuildManager.process_request(player: Player, payload: any): ()
 					nil,
 					nil,
 					next(extraAttributes) and extraAttributes or nil,
-					true
+					true,
+					roomHasDoors
 				)
 			end
 		end
