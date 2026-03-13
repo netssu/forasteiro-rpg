@@ -9,9 +9,12 @@ local OVERLAP_PADDING: number = 0.05
 local WALL_THICKNESS_RATIO: number = 0.45
 local WALL_HEIGHT_RATIO: number = 1.25
 local WALL_ALIGNMENT_DOT: number = 0.92
+local BASEPLATE_NAME: string = "Baseplate"
 
 ------------------//VARIABLES
 local MasterBuildManager = {}
+local cachedBaseplate: BasePart? = nil
+local cachedBaseplateParent: Instance? = nil
 
 ------------------//FUNCTIONS
 local function get_build_folder(): Folder?
@@ -119,7 +122,131 @@ local function should_room_replace_wall(newKind: string, newSize: Vector3, newCF
 	return have_similar_wall_orientation(newSize, newCFrame, existingPart.Size, existingPart.CFrame)
 end
 
-local function collect_overlapping_build_parts(size: Vector3, cframe: CFrame): {BasePart}
+local collect_overlapping_build_parts: (size: Vector3, cframe: CFrame) -> {BasePart}
+
+local function subtract_wall_overlap(wallSize: Vector3, wallCFrame: CFrame, cutSize: Vector3, cutCFrame: CFrame): {{Size: Vector3, CFrame: CFrame}}
+	local localCut = wallCFrame:ToObjectSpace(cutCFrame)
+
+	local extX = math.abs(localCut.RightVector.X) * cutSize.X/2 + math.abs(localCut.UpVector.X) * cutSize.Y/2 + math.abs(localCut.LookVector.X) * cutSize.Z/2
+	local extY = math.abs(localCut.RightVector.Y) * cutSize.X/2 + math.abs(localCut.UpVector.Y) * cutSize.Y/2 + math.abs(localCut.LookVector.Y) * cutSize.Z/2
+	local extZ = math.abs(localCut.RightVector.Z) * cutSize.X/2 + math.abs(localCut.UpVector.Z) * cutSize.Y/2 + math.abs(localCut.LookVector.Z) * cutSize.Z/2
+
+	if math.abs(localCut.Position.X) > wallSize.X/2 + extX then return {{CFrame = wallCFrame, Size = wallSize}} end
+	if math.abs(localCut.Position.Y) > wallSize.Y/2 + extY then return {{CFrame = wallCFrame, Size = wallSize}} end
+	if math.abs(localCut.Position.Z) > wallSize.Z/2 + extZ then return {{CFrame = wallCFrame, Size = wallSize}} end
+
+	local dMin = localCut.Position.Z - extZ
+	local dMax = localCut.Position.Z + extZ
+	local wMin = -wallSize.Z/2
+	local wMax = wallSize.Z/2
+
+	local iMin = math.max(wMin, dMin)
+	local iMax = math.min(wMax, dMax)
+
+	if iMin >= iMax then return {{CFrame = wallCFrame, Size = wallSize}} end
+
+	local parts = {}
+
+	if wMin < iMin then
+		local len = iMin - wMin
+		local centerZ = wMin + len/2
+		table.insert(parts, {Size = Vector3.new(wallSize.X, wallSize.Y, len), CFrame = wallCFrame * CFrame.new(0, 0, centerZ)})
+	end
+
+	if iMax < wMax then
+		local len = wMax - iMax
+		local centerZ = iMax + len/2
+		table.insert(parts, {Size = Vector3.new(wallSize.X, wallSize.Y, len), CFrame = wallCFrame * CFrame.new(0, 0, centerZ)})
+	end
+
+	local holeTopY = localCut.Position.Y + extY
+	local holeBottomY = localCut.Position.Y - extY
+	local wallTopY = wallSize.Y/2
+	local wallBottomY = -wallSize.Y/2
+
+	local len = iMax - iMin
+	local centerZ = (iMin + iMax) / 2
+
+	if holeTopY < wallTopY then
+		local topHeight = wallTopY - holeTopY
+		local centerY = holeTopY + topHeight/2
+		table.insert(parts, {Size = Vector3.new(wallSize.X, topHeight, len), CFrame = wallCFrame * CFrame.new(0, centerY, centerZ)})
+	end
+
+	if holeBottomY > wallBottomY then
+		local botHeight = holeBottomY - wallBottomY
+		local botCenterY = wallBottomY + botHeight/2
+		table.insert(parts, {Size = Vector3.new(wallSize.X, botHeight, len), CFrame = wallCFrame * CFrame.new(0, botCenterY, centerZ)})
+	end
+
+	return parts
+end
+
+local function resolve_room_wall_fragments(size: Vector3, cframe: CFrame, buildKind: string): {{Size: Vector3, CFrame: CFrame}}
+	local fragments = {{Size = size, CFrame = cframe}}
+	local overlaps = collect_overlapping_build_parts(size, cframe)
+
+	for _, hitPart in overlaps do
+		local nextFragments = {}
+
+		for _, fragment in fragments do
+			if should_room_replace_wall(buildKind, fragment.Size, fragment.CFrame, hitPart) then
+				local sliced = subtract_wall_overlap(fragment.Size, fragment.CFrame, hitPart.Size, hitPart.CFrame)
+				for _, slicedPart in sliced do
+					table.insert(nextFragments, slicedPart)
+				end
+			else
+				table.insert(nextFragments, fragment)
+			end
+		end
+
+		fragments = nextFragments
+	end
+
+	return fragments
+end
+
+local function resolve_existing_wall_fragments(size: Vector3, cframe: CFrame, buildKind: string, extraAttributes: {[string]: any}?): ({[BasePart]: {{Size: Vector3, CFrame: CFrame}}}, {[BasePart]: boolean})
+	local overlaps = collect_overlapping_build_parts(size, cframe)
+	local replacementsByPart = {}
+	local partsToDestroy = {}
+	local cutouts = {
+		{Size = size, CFrame = cframe},
+	}
+
+	if extraAttributes and extraAttributes.HasDoorOpening == true
+		and typeof(extraAttributes.DoorCutCFrame) == "CFrame"
+		and typeof(extraAttributes.DoorCutSize) == "Vector3" then
+		table.insert(cutouts, {
+			Size = extraAttributes.DoorCutSize,
+			CFrame = extraAttributes.DoorCutCFrame,
+		})
+	end
+
+	for _, hitPart in overlaps do
+		if should_room_replace_wall(buildKind, size, cframe, hitPart) then
+			local sliced = {{Size = hitPart.Size, CFrame = hitPart.CFrame}}
+
+			for _, cutout in cutouts do
+				local nextSliced = {}
+				for _, fragment in sliced do
+					local fragmentPieces = subtract_wall_overlap(fragment.Size, fragment.CFrame, cutout.Size, cutout.CFrame)
+					for _, piece in fragmentPieces do
+						table.insert(nextSliced, piece)
+					end
+				end
+				sliced = nextSliced
+			end
+
+			replacementsByPart[hitPart] = sliced
+			partsToDestroy[hitPart] = true
+		end
+	end
+
+	return replacementsByPart, partsToDestroy
+end
+
+collect_overlapping_build_parts = function(size: Vector3, cframe: CFrame): {BasePart}
 	local folder = get_build_folder()
 	if not folder then
 		return {}
@@ -153,7 +280,7 @@ local function destroy_room_overlapping_walls(size: Vector3, cframe: CFrame, bui
 	end
 end
 
-local function apply_part_visuals(part: BasePart, color: Color3?, buildKind: string, lightRange: number?, lightBrightness: number?): ()
+local function apply_part_visuals(part: BasePart, color: Color3?, buildKind: string, lightRange: number?, lightBrightness: number?, materialOverride: Enum.Material?): ()
 	part.Color = sanitize_color(color)
 	part.TopSurface = Enum.SurfaceType.Smooth
 	part.BottomSurface = Enum.SurfaceType.Smooth
@@ -175,7 +302,7 @@ local function apply_part_visuals(part: BasePart, color: Color3?, buildKind: str
 		pointLight.Brightness = typeof(lightBrightness) == "number" and lightBrightness or 2
 		pointLight.Shadows = true
 	else
-		part.Material = Enum.Material.SmoothPlastic
+		part.Material = materialOverride or Enum.Material.SmoothPlastic
 
 		local pointLight = part:FindFirstChildOfClass("PointLight")
 		if pointLight then
@@ -194,7 +321,37 @@ local function apply_extra_attributes(part: BasePart, extraAttributes: {[string]
 	end
 end
 
-local function create_build_part(size: Vector3, cframe: CFrame, color: Color3?, buildKind: string?, lightRange: number?, lightBrightness: number?, extraAttributes: {[string]: any}?, allowRoomReplacement: boolean?): BasePart?
+local function get_baseplate(): BasePart?
+	if cachedBaseplate and cachedBaseplate.Parent ~= nil then
+		return cachedBaseplate
+	end
+
+	local baseplate = workspace:FindFirstChild(BASEPLATE_NAME)
+	if baseplate and baseplate:IsA("BasePart") then
+		cachedBaseplate = baseplate
+		cachedBaseplateParent = baseplate.Parent
+		return baseplate
+	end
+
+	return nil
+end
+
+local function set_baseplate_enabled(enabled: boolean): ()
+	local baseplate = get_baseplate()
+	if not baseplate then
+		return
+	end
+
+	if enabled then
+		baseplate.Parent = cachedBaseplateParent or workspace
+		return
+	end
+
+	cachedBaseplateParent = baseplate.Parent
+	baseplate.Parent = nil
+end
+
+local function create_build_part(size: Vector3, cframe: CFrame, color: Color3?, buildKind: string?, lightRange: number?, lightBrightness: number?, extraAttributes: {[string]: any}?, allowRoomReplacement: boolean?, preferNewWall: boolean?, materialOverride: Enum.Material?): BasePart?
 	local folder = get_build_folder()
 	if not folder then
 		return nil
@@ -202,28 +359,80 @@ local function create_build_part(size: Vector3, cframe: CFrame, color: Color3?, 
 
 	local finalSize = sanitize_size(size)
 	local finalKind = buildKind or "Part"
+	local fragments = {{Size = finalSize, CFrame = cframe}}
+	local minFragmentHeight = finalSize.Y - 0.01
 
 	if allowRoomReplacement == true then
-		destroy_room_overlapping_walls(finalSize, cframe, finalKind)
+		if is_wall_like_kind(finalKind, finalSize) then
+			local shouldPreferNewWall = preferNewWall == true
+
+			if shouldPreferNewWall then
+				local replacementsByPart, partsToDestroy = resolve_existing_wall_fragments(finalSize, cframe, finalKind, extraAttributes)
+				for partToDestroy in partsToDestroy do
+					local sourceColor = partToDestroy.Color
+					local sourceKind = get_build_kind(partToDestroy)
+					local sourceAttributes = partToDestroy:GetAttributes()
+					partToDestroy:Destroy()
+
+					local replacements = replacementsByPart[partToDestroy]
+					if replacements then
+						for _, replacement in replacements do
+							if replacement.Size.Y < minFragmentHeight then
+								continue
+							end
+
+							local replacementPart = Instance.new("Part")
+							replacementPart.Name = "BuildPart"
+							replacementPart.Anchored = true
+							replacementPart.CanCollide = true
+							replacementPart.CanTouch = true
+							replacementPart.CanQuery = true
+							replacementPart.Size = sanitize_size(replacement.Size)
+							replacementPart.CFrame = replacement.CFrame
+							apply_part_visuals(replacementPart, sourceColor, sourceKind, nil, nil, materialOverride)
+							for attributeName, attributeValue in sourceAttributes do
+								replacementPart:SetAttribute(attributeName, attributeValue)
+							end
+							replacementPart.Parent = folder
+						end
+					end
+				end
+			else
+				fragments = resolve_room_wall_fragments(finalSize, cframe, finalKind)
+			end
+		else
+			destroy_room_overlapping_walls(finalSize, cframe, finalKind)
+		end
 	end
 
-	local part = Instance.new("Part")
-	part.Name = "BuildPart"
-	part.Anchored = true
-	part.CanCollide = true
-	part.CanTouch = true
-	part.CanQuery = true
-	part.Size = finalSize
-	part.CFrame = cframe
+	local firstPart = nil
+	for _, fragment in fragments do
+		if fragment.Size.Y < minFragmentHeight then
+			continue
+		end
 
-	apply_part_visuals(part, color, finalKind, lightRange, lightBrightness)
-	apply_extra_attributes(part, extraAttributes)
+		local part = Instance.new("Part")
+		part.Name = "BuildPart"
+		part.Anchored = true
+		part.CanCollide = true
+		part.CanTouch = true
+		part.CanQuery = true
+		part.Size = sanitize_size(fragment.Size)
+		part.CFrame = fragment.CFrame
 
-	part.Parent = folder
-	return part
+		apply_part_visuals(part, color, finalKind, lightRange, lightBrightness, materialOverride)
+		apply_extra_attributes(part, extraAttributes)
+
+		part.Parent = folder
+		if firstPart == nil then
+			firstPart = part
+		end
+	end
+
+	return firstPart
 end
 
-local function update_build_part(part: BasePart, size: Vector3?, cframe: CFrame?, color: Color3?, lightRange: number?, lightBrightness: number?): ()
+local function update_build_part(part: BasePart, size: Vector3?, cframe: CFrame?, color: Color3?, lightRange: number?, lightBrightness: number?, materialOverride: Enum.Material?): ()
 	local finalSize = size and sanitize_size(size) or part.Size
 	local finalCFrame = cframe or part.CFrame
 	local buildKind = get_build_kind(part)
@@ -232,7 +441,9 @@ local function update_build_part(part: BasePart, size: Vector3?, cframe: CFrame?
 	part.CFrame = finalCFrame
 
 	if color or buildKind == "Light" then
-		apply_part_visuals(part, color or part.Color, buildKind, lightRange, lightBrightness)
+		apply_part_visuals(part, color or part.Color, buildKind, lightRange, lightBrightness, materialOverride)
+	elseif materialOverride and buildKind ~= "Light" then
+		part.Material = materialOverride
 	end
 
 	if lightRange or lightBrightness then
@@ -287,7 +498,10 @@ function MasterBuildManager.process_request(player: Player, payload: any): ()
 		local lightRange = typeof(payload.LightRange) == "number" and payload.LightRange or nil
 		local lightBrightness = typeof(payload.LightBrightness) == "number" and payload.LightBrightness or nil
 
-		create_build_part(payload.Size, payload.CFrame, color, buildKind, lightRange, lightBrightness, nil, false)
+		local materialOverride = typeof(payload.Material) == "EnumItem" and payload.Material.EnumType == Enum.Material and payload.Material or nil
+		local extraAttributes = typeof(payload.ExtraAttributes) == "table" and payload.ExtraAttributes or nil
+
+		create_build_part(payload.Size, payload.CFrame, color, buildKind, lightRange, lightBrightness, extraAttributes, false, false, materialOverride)
 		return
 	end
 
@@ -298,11 +512,22 @@ function MasterBuildManager.process_request(player: Player, payload: any): ()
 
 		local color = typeof(payload.Color) == "Color3" and payload.Color or nil
 		local roomId = typeof(payload.RoomId) == "string" and payload.RoomId or nil
+		local roomHasDoors = typeof(payload.Doors) == "table" and #payload.Doors > 0
 
 		for _, partData in payload.Parts do
 			if typeof(partData) == "table"
 				and typeof(partData.Size) == "Vector3"
 				and typeof(partData.CFrame) == "CFrame" then
+				local extraAttributes = {}
+				if roomId then
+					extraAttributes.RoomId = roomId
+				end
+				if typeof(partData.ExtraAttributes) == "table" then
+					for attributeName, attributeValue in partData.ExtraAttributes do
+						extraAttributes[attributeName] = attributeValue
+					end
+				end
+
 				create_build_part(
 					partData.Size,
 					partData.CFrame,
@@ -310,8 +535,10 @@ function MasterBuildManager.process_request(player: Player, payload: any): ()
 					typeof(partData.BuildKind) == "string" and partData.BuildKind or nil,
 					nil,
 					nil,
-					roomId and {RoomId = roomId} or nil,
-					true
+					next(extraAttributes) and extraAttributes or nil,
+					true,
+					roomHasDoors,
+					nil
 				)
 			end
 		end
@@ -331,7 +558,17 @@ function MasterBuildManager.process_request(player: Player, payload: any): ()
 		local lightRange = typeof(payload.LightRange) == "number" and payload.LightRange or nil
 		local lightBrightness = typeof(payload.LightBrightness) == "number" and payload.LightBrightness or nil
 
-		update_build_part(part, size, cframe, color, lightRange, lightBrightness)
+		local materialOverride = typeof(payload.Material) == "EnumItem" and payload.Material.EnumType == Enum.Material and payload.Material or nil
+		update_build_part(part, size, cframe, color, lightRange, lightBrightness, materialOverride)
+		return
+	end
+
+	if action == "SetBaseplateEnabled" then
+		if typeof(payload.Enabled) ~= "boolean" then
+			return
+		end
+
+		set_baseplate_enabled(payload.Enabled)
 		return
 	end
 
