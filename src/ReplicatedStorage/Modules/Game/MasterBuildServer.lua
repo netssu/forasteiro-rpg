@@ -9,9 +9,26 @@ local OVERLAP_PADDING: number = 0.05
 local WALL_THICKNESS_RATIO: number = 0.45
 local WALL_HEIGHT_RATIO: number = 1.25
 local WALL_ALIGNMENT_DOT: number = 0.92
+local BASEPLATE_NAME: string = "Baseplate"
+local TERRAIN_STEP_SIZE: number = 8
 
 ------------------//VARIABLES
 local MasterBuildManager = {}
+local cachedBaseplate: BasePart? = nil
+local cachedBaseplateParent: Instance? = nil
+local terrainStateByUserId: {[number]: {Center: Vector3, Width: number, MinY: number, MaxY: number}} = {}
+
+local TERRAIN_BIOMES = {
+	Arctic = {Top = Enum.Material.Snow, Under = Enum.Material.Rock, BaseHeight = 20, Amplitude = 10, NoiseScale = 0.025, Ridge = 6, WaterLevel = nil},
+	Dunes = {Top = Enum.Material.Sand, Under = Enum.Material.Sandstone, BaseHeight = 18, Amplitude = 8, NoiseScale = 0.03, Ridge = 10, WaterLevel = nil},
+	Canyons = {Top = Enum.Material.Slate, Under = Enum.Material.Rock, BaseHeight = 24, Amplitude = 14, NoiseScale = 0.018, Ridge = 12, WaterLevel = nil},
+	Lavascape = {Top = Enum.Material.Basalt, Under = Enum.Material.Rock, BaseHeight = 20, Amplitude = 9, NoiseScale = 0.022, Ridge = 8, WaterLevel = nil},
+	Water = {Top = Enum.Material.Sand, Under = Enum.Material.Rock, BaseHeight = 8, Amplitude = 5, NoiseScale = 0.03, Ridge = 2, WaterLevel = 18},
+	Mountains = {Top = Enum.Material.Rock, Under = Enum.Material.Slate, BaseHeight = 30, Amplitude = 18, NoiseScale = 0.015, Ridge = 14, WaterLevel = nil},
+	Hills = {Top = Enum.Material.Grass, Under = Enum.Material.Ground, BaseHeight = 18, Amplitude = 8, NoiseScale = 0.024, Ridge = 5, WaterLevel = nil},
+	Plains = {Top = Enum.Material.Grass, Under = Enum.Material.Ground, BaseHeight = 14, Amplitude = 4, NoiseScale = 0.028, Ridge = 2, WaterLevel = nil},
+	Marsh = {Top = Enum.Material.Mud, Under = Enum.Material.Ground, BaseHeight = 12, Amplitude = 5, NoiseScale = 0.026, Ridge = 3, WaterLevel = 16},
+}
 
 ------------------//FUNCTIONS
 local function get_build_folder(): Folder?
@@ -119,7 +136,131 @@ local function should_room_replace_wall(newKind: string, newSize: Vector3, newCF
 	return have_similar_wall_orientation(newSize, newCFrame, existingPart.Size, existingPart.CFrame)
 end
 
-local function collect_overlapping_build_parts(size: Vector3, cframe: CFrame): {BasePart}
+local collect_overlapping_build_parts: (size: Vector3, cframe: CFrame) -> {BasePart}
+
+local function subtract_wall_overlap(wallSize: Vector3, wallCFrame: CFrame, cutSize: Vector3, cutCFrame: CFrame): {{Size: Vector3, CFrame: CFrame}}
+	local localCut = wallCFrame:ToObjectSpace(cutCFrame)
+
+	local extX = math.abs(localCut.RightVector.X) * cutSize.X/2 + math.abs(localCut.UpVector.X) * cutSize.Y/2 + math.abs(localCut.LookVector.X) * cutSize.Z/2
+	local extY = math.abs(localCut.RightVector.Y) * cutSize.X/2 + math.abs(localCut.UpVector.Y) * cutSize.Y/2 + math.abs(localCut.LookVector.Y) * cutSize.Z/2
+	local extZ = math.abs(localCut.RightVector.Z) * cutSize.X/2 + math.abs(localCut.UpVector.Z) * cutSize.Y/2 + math.abs(localCut.LookVector.Z) * cutSize.Z/2
+
+	if math.abs(localCut.Position.X) > wallSize.X/2 + extX then return {{CFrame = wallCFrame, Size = wallSize}} end
+	if math.abs(localCut.Position.Y) > wallSize.Y/2 + extY then return {{CFrame = wallCFrame, Size = wallSize}} end
+	if math.abs(localCut.Position.Z) > wallSize.Z/2 + extZ then return {{CFrame = wallCFrame, Size = wallSize}} end
+
+	local dMin = localCut.Position.Z - extZ
+	local dMax = localCut.Position.Z + extZ
+	local wMin = -wallSize.Z/2
+	local wMax = wallSize.Z/2
+
+	local iMin = math.max(wMin, dMin)
+	local iMax = math.min(wMax, dMax)
+
+	if iMin >= iMax then return {{CFrame = wallCFrame, Size = wallSize}} end
+
+	local parts = {}
+
+	if wMin < iMin then
+		local len = iMin - wMin
+		local centerZ = wMin + len/2
+		table.insert(parts, {Size = Vector3.new(wallSize.X, wallSize.Y, len), CFrame = wallCFrame * CFrame.new(0, 0, centerZ)})
+	end
+
+	if iMax < wMax then
+		local len = wMax - iMax
+		local centerZ = iMax + len/2
+		table.insert(parts, {Size = Vector3.new(wallSize.X, wallSize.Y, len), CFrame = wallCFrame * CFrame.new(0, 0, centerZ)})
+	end
+
+	local holeTopY = localCut.Position.Y + extY
+	local holeBottomY = localCut.Position.Y - extY
+	local wallTopY = wallSize.Y/2
+	local wallBottomY = -wallSize.Y/2
+
+	local len = iMax - iMin
+	local centerZ = (iMin + iMax) / 2
+
+	if holeTopY < wallTopY then
+		local topHeight = wallTopY - holeTopY
+		local centerY = holeTopY + topHeight/2
+		table.insert(parts, {Size = Vector3.new(wallSize.X, topHeight, len), CFrame = wallCFrame * CFrame.new(0, centerY, centerZ)})
+	end
+
+	if holeBottomY > wallBottomY then
+		local botHeight = holeBottomY - wallBottomY
+		local botCenterY = wallBottomY + botHeight/2
+		table.insert(parts, {Size = Vector3.new(wallSize.X, botHeight, len), CFrame = wallCFrame * CFrame.new(0, botCenterY, centerZ)})
+	end
+
+	return parts
+end
+
+local function resolve_room_wall_fragments(size: Vector3, cframe: CFrame, buildKind: string): {{Size: Vector3, CFrame: CFrame}}
+	local fragments = {{Size = size, CFrame = cframe}}
+	local overlaps = collect_overlapping_build_parts(size, cframe)
+
+	for _, hitPart in overlaps do
+		local nextFragments = {}
+
+		for _, fragment in fragments do
+			if should_room_replace_wall(buildKind, fragment.Size, fragment.CFrame, hitPart) then
+				local sliced = subtract_wall_overlap(fragment.Size, fragment.CFrame, hitPart.Size, hitPart.CFrame)
+				for _, slicedPart in sliced do
+					table.insert(nextFragments, slicedPart)
+				end
+			else
+				table.insert(nextFragments, fragment)
+			end
+		end
+
+		fragments = nextFragments
+	end
+
+	return fragments
+end
+
+local function resolve_existing_wall_fragments(size: Vector3, cframe: CFrame, buildKind: string, extraAttributes: {[string]: any}?): ({[BasePart]: {{Size: Vector3, CFrame: CFrame}}}, {[BasePart]: boolean})
+	local overlaps = collect_overlapping_build_parts(size, cframe)
+	local replacementsByPart = {}
+	local partsToDestroy = {}
+	local cutouts = {
+		{Size = size, CFrame = cframe},
+	}
+
+	if extraAttributes and extraAttributes.HasDoorOpening == true
+		and typeof(extraAttributes.DoorCutCFrame) == "CFrame"
+		and typeof(extraAttributes.DoorCutSize) == "Vector3" then
+		table.insert(cutouts, {
+			Size = extraAttributes.DoorCutSize,
+			CFrame = extraAttributes.DoorCutCFrame,
+		})
+	end
+
+	for _, hitPart in overlaps do
+		if should_room_replace_wall(buildKind, size, cframe, hitPart) then
+			local sliced = {{Size = hitPart.Size, CFrame = hitPart.CFrame}}
+
+			for _, cutout in cutouts do
+				local nextSliced = {}
+				for _, fragment in sliced do
+					local fragmentPieces = subtract_wall_overlap(fragment.Size, fragment.CFrame, cutout.Size, cutout.CFrame)
+					for _, piece in fragmentPieces do
+						table.insert(nextSliced, piece)
+					end
+				end
+				sliced = nextSliced
+			end
+
+			replacementsByPart[hitPart] = sliced
+			partsToDestroy[hitPart] = true
+		end
+	end
+
+	return replacementsByPart, partsToDestroy
+end
+
+collect_overlapping_build_parts = function(size: Vector3, cframe: CFrame): {BasePart}
 	local folder = get_build_folder()
 	if not folder then
 		return {}
@@ -153,7 +294,7 @@ local function destroy_room_overlapping_walls(size: Vector3, cframe: CFrame, bui
 	end
 end
 
-local function apply_part_visuals(part: BasePart, color: Color3?, buildKind: string, lightRange: number?, lightBrightness: number?): ()
+local function apply_part_visuals(part: BasePart, color: Color3?, buildKind: string, lightRange: number?, lightBrightness: number?, materialOverride: Enum.Material?): ()
 	part.Color = sanitize_color(color)
 	part.TopSurface = Enum.SurfaceType.Smooth
 	part.BottomSurface = Enum.SurfaceType.Smooth
@@ -175,7 +316,7 @@ local function apply_part_visuals(part: BasePart, color: Color3?, buildKind: str
 		pointLight.Brightness = typeof(lightBrightness) == "number" and lightBrightness or 2
 		pointLight.Shadows = true
 	else
-		part.Material = Enum.Material.SmoothPlastic
+		part.Material = materialOverride or Enum.Material.SmoothPlastic
 
 		local pointLight = part:FindFirstChildOfClass("PointLight")
 		if pointLight then
@@ -194,7 +335,37 @@ local function apply_extra_attributes(part: BasePart, extraAttributes: {[string]
 	end
 end
 
-local function create_build_part(size: Vector3, cframe: CFrame, color: Color3?, buildKind: string?, lightRange: number?, lightBrightness: number?, extraAttributes: {[string]: any}?, allowRoomReplacement: boolean?): BasePart?
+local function get_baseplate(): BasePart?
+	if cachedBaseplate and cachedBaseplate.Parent ~= nil then
+		return cachedBaseplate
+	end
+
+	local baseplate = workspace:FindFirstChild(BASEPLATE_NAME)
+	if baseplate and baseplate:IsA("BasePart") then
+		cachedBaseplate = baseplate
+		cachedBaseplateParent = baseplate.Parent
+		return baseplate
+	end
+
+	return nil
+end
+
+local function set_baseplate_enabled(enabled: boolean): ()
+	local baseplate = get_baseplate()
+	if not baseplate then
+		return
+	end
+
+	if enabled then
+		baseplate.Parent = cachedBaseplateParent or workspace
+		return
+	end
+
+	cachedBaseplateParent = baseplate.Parent
+	baseplate.Parent = nil
+end
+
+local function create_build_part(size: Vector3, cframe: CFrame, color: Color3?, buildKind: string?, lightRange: number?, lightBrightness: number?, extraAttributes: {[string]: any}?, allowRoomReplacement: boolean?, preferNewWall: boolean?, materialOverride: Enum.Material?): BasePart?
 	local folder = get_build_folder()
 	if not folder then
 		return nil
@@ -202,28 +373,80 @@ local function create_build_part(size: Vector3, cframe: CFrame, color: Color3?, 
 
 	local finalSize = sanitize_size(size)
 	local finalKind = buildKind or "Part"
+	local fragments = {{Size = finalSize, CFrame = cframe}}
+	local minFragmentHeight = finalSize.Y - 0.01
 
 	if allowRoomReplacement == true then
-		destroy_room_overlapping_walls(finalSize, cframe, finalKind)
+		if is_wall_like_kind(finalKind, finalSize) then
+			local shouldPreferNewWall = preferNewWall == true
+
+			if shouldPreferNewWall then
+				local replacementsByPart, partsToDestroy = resolve_existing_wall_fragments(finalSize, cframe, finalKind, extraAttributes)
+				for partToDestroy in partsToDestroy do
+					local sourceColor = partToDestroy.Color
+					local sourceKind = get_build_kind(partToDestroy)
+					local sourceAttributes = partToDestroy:GetAttributes()
+					partToDestroy:Destroy()
+
+					local replacements = replacementsByPart[partToDestroy]
+					if replacements then
+						for _, replacement in replacements do
+							if replacement.Size.Y < minFragmentHeight then
+								continue
+							end
+
+							local replacementPart = Instance.new("Part")
+							replacementPart.Name = "BuildPart"
+							replacementPart.Anchored = true
+							replacementPart.CanCollide = true
+							replacementPart.CanTouch = true
+							replacementPart.CanQuery = true
+							replacementPart.Size = sanitize_size(replacement.Size)
+							replacementPart.CFrame = replacement.CFrame
+							apply_part_visuals(replacementPart, sourceColor, sourceKind, nil, nil, materialOverride)
+							for attributeName, attributeValue in sourceAttributes do
+								replacementPart:SetAttribute(attributeName, attributeValue)
+							end
+							replacementPart.Parent = folder
+						end
+					end
+				end
+			else
+				fragments = resolve_room_wall_fragments(finalSize, cframe, finalKind)
+			end
+		else
+			destroy_room_overlapping_walls(finalSize, cframe, finalKind)
+		end
 	end
 
-	local part = Instance.new("Part")
-	part.Name = "BuildPart"
-	part.Anchored = true
-	part.CanCollide = true
-	part.CanTouch = true
-	part.CanQuery = true
-	part.Size = finalSize
-	part.CFrame = cframe
+	local firstPart = nil
+	for _, fragment in fragments do
+		if fragment.Size.Y < minFragmentHeight then
+			continue
+		end
 
-	apply_part_visuals(part, color, finalKind, lightRange, lightBrightness)
-	apply_extra_attributes(part, extraAttributes)
+		local part = Instance.new("Part")
+		part.Name = "BuildPart"
+		part.Anchored = true
+		part.CanCollide = true
+		part.CanTouch = true
+		part.CanQuery = true
+		part.Size = sanitize_size(fragment.Size)
+		part.CFrame = fragment.CFrame
 
-	part.Parent = folder
-	return part
+		apply_part_visuals(part, color, finalKind, lightRange, lightBrightness, materialOverride)
+		apply_extra_attributes(part, extraAttributes)
+
+		part.Parent = folder
+		if firstPart == nil then
+			firstPart = part
+		end
+	end
+
+	return firstPart
 end
 
-local function update_build_part(part: BasePart, size: Vector3?, cframe: CFrame?, color: Color3?, lightRange: number?, lightBrightness: number?): ()
+local function update_build_part(part: BasePart, size: Vector3?, cframe: CFrame?, color: Color3?, lightRange: number?, lightBrightness: number?, materialOverride: Enum.Material?): ()
 	local finalSize = size and sanitize_size(size) or part.Size
 	local finalCFrame = cframe or part.CFrame
 	local buildKind = get_build_kind(part)
@@ -232,7 +455,9 @@ local function update_build_part(part: BasePart, size: Vector3?, cframe: CFrame?
 	part.CFrame = finalCFrame
 
 	if color or buildKind == "Light" then
-		apply_part_visuals(part, color or part.Color, buildKind, lightRange, lightBrightness)
+		apply_part_visuals(part, color or part.Color, buildKind, lightRange, lightBrightness, materialOverride)
+	elseif materialOverride and buildKind ~= "Light" then
+		part.Material = materialOverride
 	end
 
 	if lightRange or lightBrightness then
@@ -265,6 +490,103 @@ local function move_character_to_cframe(character: Model, targetCFrame: CFrame):
 	rootPart.CFrame = targetCFrame
 end
 
+local function clear_terrain_region(center: Vector3, width: number, minY: number, maxY: number): ()
+	local terrain = workspace.Terrain
+	local height = math.max(4, maxY - minY)
+	local cframe = CFrame.new(center.X, minY + (height / 2), center.Z)
+	terrain:FillBlock(cframe, Vector3.new(width, height, width), Enum.Material.Air)
+end
+
+local function move_all_characters_above(yLevel: number): ()
+	local charactersFolder = workspace:FindFirstChild("Characters")
+	if not charactersFolder or not charactersFolder:IsA("Folder") then
+		return
+	end
+
+	for _, character in charactersFolder:GetChildren() do
+		if character:IsA("Model") then
+			local rootPart = character:FindFirstChild("HumanoidRootPart")
+			if rootPart and rootPart:IsA("BasePart") and rootPart.Position.Y < yLevel then
+				local pos = Vector3.new(rootPart.Position.X, yLevel, rootPart.Position.Z)
+				local forward = Vector3.new(rootPart.CFrame.LookVector.X, 0, rootPart.CFrame.LookVector.Z)
+				if forward.Magnitude < 0.001 then
+					forward = Vector3.new(0, 0, -1)
+				else
+					forward = forward.Unit
+				end
+				move_character_to_cframe(character, CFrame.new(pos, pos + forward))
+			end
+		end
+	end
+end
+
+local function generate_biome_terrain(userId: number, center: Vector3, width: number, biomeName: string, hideBaseplate: boolean, topMaterialOverride: Enum.Material?, relief: number): ()
+	local biome = TERRAIN_BIOMES[biomeName] or TERRAIN_BIOMES.Marsh
+	local topMaterial = topMaterialOverride or biome.Top
+	local reliefFactor = math.clamp(relief, 0.6, 1.8)
+	local terrain = workspace.Terrain
+	local seed = (userId % 997) * 0.11
+	local half = width / 2
+	local step = TERRAIN_STEP_SIZE
+	local minY = center.Y - 64
+	local maxY = center.Y + biome.BaseHeight + (biome.Amplitude * reliefFactor) + (biome.Ridge * reliefFactor) + 36
+
+	local oldState = terrainStateByUserId[userId]
+	if oldState then
+		clear_terrain_region(oldState.Center, oldState.Width, oldState.MinY, oldState.MaxY)
+	end
+
+	clear_terrain_region(center, width, minY, maxY)
+
+	for x = -half, half - step, step do
+		for z = -half, half - step, step do
+			local worldX = center.X + x + (step / 2)
+			local worldZ = center.Z + z + (step / 2)
+
+			local n1 = math.noise((worldX * biome.NoiseScale) + seed, (worldZ * biome.NoiseScale) - seed)
+			local n2 = math.noise((worldX * biome.NoiseScale * 2) - seed, (worldZ * biome.NoiseScale * 2) + seed)
+			local ridge = math.abs(math.noise((worldX * biome.NoiseScale * 0.65) + seed, (worldZ * biome.NoiseScale * 0.65) + seed))
+			local height = center.Y + biome.BaseHeight + (n1 * biome.Amplitude * reliefFactor) + (n2 * biome.Amplitude * 0.35 * reliefFactor) + (ridge * biome.Ridge * reliefFactor)
+
+			local underMinY = minY
+			local underHeight = math.max(6, height - underMinY)
+			terrain:FillBlock(CFrame.new(worldX, underMinY + (underHeight / 2), worldZ), Vector3.new(step, underHeight, step), biome.Under)
+
+			local topThickness = math.clamp(2 + (math.abs(n2) * 3), 2, 6)
+			terrain:FillBlock(CFrame.new(worldX, height - (topThickness / 2), worldZ), Vector3.new(step, topThickness, step), topMaterial)
+
+			if biome.WaterLevel and height < biome.WaterLevel then
+				local waterHeight = biome.WaterLevel - height
+				if waterHeight > 1 then
+					terrain:FillBlock(CFrame.new(worldX, height + (waterHeight / 2), worldZ), Vector3.new(step, waterHeight, step), Enum.Material.Water)
+				end
+			end
+		end
+	end
+
+	terrainStateByUserId[userId] = {
+		Center = center,
+		Width = width,
+		MinY = minY,
+		MaxY = maxY,
+	}
+
+	set_baseplate_enabled(not hideBaseplate)
+	move_all_characters_above(maxY + 8)
+end
+
+local function reset_generated_terrain(userId: number): ()
+	local state = terrainStateByUserId[userId]
+	if not state then
+		set_baseplate_enabled(true)
+		return
+	end
+
+	clear_terrain_region(state.Center, state.Width, state.MinY, state.MaxY)
+	terrainStateByUserId[userId] = nil
+	set_baseplate_enabled(true)
+end
+
 ------------------//MAIN FUNCTIONS
 function MasterBuildManager.process_request(player: Player, payload: any): ()
 	if player.Team == nil or player.Team.Name ~= MASTER_TEAM_NAME then
@@ -287,7 +609,10 @@ function MasterBuildManager.process_request(player: Player, payload: any): ()
 		local lightRange = typeof(payload.LightRange) == "number" and payload.LightRange or nil
 		local lightBrightness = typeof(payload.LightBrightness) == "number" and payload.LightBrightness or nil
 
-		create_build_part(payload.Size, payload.CFrame, color, buildKind, lightRange, lightBrightness, nil, false)
+		local materialOverride = typeof(payload.Material) == "EnumItem" and payload.Material.EnumType == Enum.Material and payload.Material or nil
+		local extraAttributes = typeof(payload.ExtraAttributes) == "table" and payload.ExtraAttributes or nil
+
+		create_build_part(payload.Size, payload.CFrame, color, buildKind, lightRange, lightBrightness, extraAttributes, false, false, materialOverride)
 		return
 	end
 
@@ -298,11 +623,22 @@ function MasterBuildManager.process_request(player: Player, payload: any): ()
 
 		local color = typeof(payload.Color) == "Color3" and payload.Color or nil
 		local roomId = typeof(payload.RoomId) == "string" and payload.RoomId or nil
+		local roomHasDoors = typeof(payload.Doors) == "table" and #payload.Doors > 0
 
 		for _, partData in payload.Parts do
 			if typeof(partData) == "table"
 				and typeof(partData.Size) == "Vector3"
 				and typeof(partData.CFrame) == "CFrame" then
+				local extraAttributes = {}
+				if roomId then
+					extraAttributes.RoomId = roomId
+				end
+				if typeof(partData.ExtraAttributes) == "table" then
+					for attributeName, attributeValue in partData.ExtraAttributes do
+						extraAttributes[attributeName] = attributeValue
+					end
+				end
+
 				create_build_part(
 					partData.Size,
 					partData.CFrame,
@@ -310,8 +646,10 @@ function MasterBuildManager.process_request(player: Player, payload: any): ()
 					typeof(partData.BuildKind) == "string" and partData.BuildKind or nil,
 					nil,
 					nil,
-					roomId and {RoomId = roomId} or nil,
-					true
+					next(extraAttributes) and extraAttributes or nil,
+					true,
+					roomHasDoors,
+					nil
 				)
 			end
 		end
@@ -331,7 +669,40 @@ function MasterBuildManager.process_request(player: Player, payload: any): ()
 		local lightRange = typeof(payload.LightRange) == "number" and payload.LightRange or nil
 		local lightBrightness = typeof(payload.LightBrightness) == "number" and payload.LightBrightness or nil
 
-		update_build_part(part, size, cframe, color, lightRange, lightBrightness)
+		local materialOverride = typeof(payload.Material) == "EnumItem" and payload.Material.EnumType == Enum.Material and payload.Material or nil
+		update_build_part(part, size, cframe, color, lightRange, lightBrightness, materialOverride)
+		return
+	end
+
+	if action == "SetBaseplateEnabled" then
+		if typeof(payload.Enabled) ~= "boolean" then
+			return
+		end
+
+		set_baseplate_enabled(payload.Enabled)
+		return
+	end
+
+	if action == "GenerateBiomeTerrain" then
+		if typeof(payload.Center) ~= "Vector3" then
+			return
+		end
+
+		if typeof(payload.Width) ~= "number" then
+			return
+		end
+
+		local width = math.clamp(math.floor(payload.Width + 0.5), 64, 384)
+		local biomeName = typeof(payload.Biome) == "string" and payload.Biome or "Marsh"
+		local hideBaseplate = payload.HideBaseplate == true
+		local topMaterialOverride = typeof(payload.TopMaterial) == "EnumItem" and payload.TopMaterial.EnumType == Enum.Material and payload.TopMaterial or nil
+		local relief = typeof(payload.Relief) == "number" and payload.Relief or 1
+		generate_biome_terrain(player.UserId, payload.Center, width, biomeName, hideBaseplate, topMaterialOverride, relief)
+		return
+	end
+
+	if action == "ResetGeneratedTerrain" then
+		reset_generated_terrain(player.UserId)
 		return
 	end
 
