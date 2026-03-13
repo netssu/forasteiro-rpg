@@ -10,7 +10,7 @@ local WALL_THICKNESS_RATIO: number = 0.45
 local WALL_HEIGHT_RATIO: number = 1.25
 local WALL_ALIGNMENT_DOT: number = 0.92
 local BASEPLATE_NAME: string = "Baseplate"
-local TERRAIN_STEP_SIZE: number = 8
+local TERRAIN_STEP_SIZE: number = 4
 
 ------------------//VARIABLES
 local MasterBuildManager = {}
@@ -19,15 +19,15 @@ local cachedBaseplateParent: Instance? = nil
 local terrainStateByUserId: {[number]: {Center: Vector3, Width: number, MinY: number, MaxY: number}} = {}
 
 local TERRAIN_BIOMES = {
-	Arctic = {Top = Enum.Material.Snow, Under = Enum.Material.Rock, BaseHeight = 20, Amplitude = 10, NoiseScale = 0.025, Ridge = 6, WaterLevel = nil},
-	Dunes = {Top = Enum.Material.Sand, Under = Enum.Material.Sandstone, BaseHeight = 18, Amplitude = 8, NoiseScale = 0.03, Ridge = 10, WaterLevel = nil},
-	Canyons = {Top = Enum.Material.Slate, Under = Enum.Material.Rock, BaseHeight = 24, Amplitude = 14, NoiseScale = 0.018, Ridge = 12, WaterLevel = nil},
-	Lavascape = {Top = Enum.Material.Basalt, Under = Enum.Material.Rock, BaseHeight = 20, Amplitude = 9, NoiseScale = 0.022, Ridge = 8, WaterLevel = nil},
-	Water = {Top = Enum.Material.Sand, Under = Enum.Material.Rock, BaseHeight = 8, Amplitude = 5, NoiseScale = 0.03, Ridge = 2, WaterLevel = 18},
-	Mountains = {Top = Enum.Material.Rock, Under = Enum.Material.Slate, BaseHeight = 30, Amplitude = 18, NoiseScale = 0.015, Ridge = 14, WaterLevel = nil},
-	Hills = {Top = Enum.Material.Grass, Under = Enum.Material.Ground, BaseHeight = 18, Amplitude = 8, NoiseScale = 0.024, Ridge = 5, WaterLevel = nil},
-	Plains = {Top = Enum.Material.Grass, Under = Enum.Material.Ground, BaseHeight = 14, Amplitude = 4, NoiseScale = 0.028, Ridge = 2, WaterLevel = nil},
-	Marsh = {Top = Enum.Material.Mud, Under = Enum.Material.Ground, BaseHeight = 12, Amplitude = 5, NoiseScale = 0.026, Ridge = 3, WaterLevel = 16},
+	Arctic = {Top = Enum.Material.Snow, Under = Enum.Material.Snow, BaseHeight = 24, Amplitude = 12, NoiseScale = 0.02, Ridge = 8, WaterLevel = nil, TopThickness = 6},
+	Dunes = {Top = Enum.Material.Sand, Under = Enum.Material.Sand, BaseHeight = 20, Amplitude = 9, NoiseScale = 0.024, Ridge = 9, WaterLevel = nil, TopThickness = 5},
+	Canyons = {Top = Enum.Material.Slate, Under = Enum.Material.Rock, BaseHeight = 30, Amplitude = 18, NoiseScale = 0.012, Ridge = 16, WaterLevel = nil, TopThickness = 4},
+	Lavascape = {Top = Enum.Material.Basalt, Under = Enum.Material.Basalt, BaseHeight = 26, Amplitude = 18, NoiseScale = 0.014, Ridge = 18, WaterLevel = nil, TopThickness = 5},
+	Water = {Top = Enum.Material.Sand, Under = Enum.Material.Rock, BaseHeight = 8, Amplitude = 5, NoiseScale = 0.03, Ridge = 2, WaterLevel = 18, TopThickness = 4},
+	Mountains = {Top = Enum.Material.Rock, Under = Enum.Material.Slate, BaseHeight = 34, Amplitude = 20, NoiseScale = 0.013, Ridge = 16, WaterLevel = nil, TopThickness = 4},
+	Hills = {Top = Enum.Material.Grass, Under = Enum.Material.Grass, BaseHeight = 20, Amplitude = 10, NoiseScale = 0.022, Ridge = 6, WaterLevel = nil, TopThickness = 6},
+	Plains = {Top = Enum.Material.Grass, Under = Enum.Material.Grass, BaseHeight = 16, Amplitude = 4, NoiseScale = 0.026, Ridge = 2, WaterLevel = nil, TopThickness = 6},
+	Marsh = {Top = Enum.Material.Grass, Under = Enum.Material.Mud, BaseHeight = 12, Amplitude = 5, NoiseScale = 0.024, Ridge = 3, WaterLevel = 17, TopThickness = 5},
 }
 
 ------------------//FUNCTIONS
@@ -548,21 +548,54 @@ local function generate_biome_terrain(userId: number, center: Vector3, width: nu
 
 			local n1 = math.noise((worldX * biome.NoiseScale) + seed, (worldZ * biome.NoiseScale) - seed)
 			local n2 = math.noise((worldX * biome.NoiseScale * 2) - seed, (worldZ * biome.NoiseScale * 2) + seed)
+			local n3 = math.noise((worldX * biome.NoiseScale * 0.5) + (seed * 0.7), (worldZ * biome.NoiseScale * 0.5) - (seed * 0.4))
 			local ridge = math.abs(math.noise((worldX * biome.NoiseScale * 0.65) + seed, (worldZ * biome.NoiseScale * 0.65) + seed))
-			local height = center.Y + biome.BaseHeight + (n1 * biome.Amplitude * reliefFactor) + (n2 * biome.Amplitude * 0.35 * reliefFactor) + (ridge * biome.Ridge * reliefFactor)
+			local smooth = (n1 * 0.55) + (n2 * 0.2) + (n3 * 0.25)
+			local height = center.Y + biome.BaseHeight + (smooth * biome.Amplitude * reliefFactor) + (ridge * biome.Ridge * reliefFactor)
 
 			local underMinY = minY
 			local underHeight = math.max(6, height - underMinY)
 			terrain:FillBlock(CFrame.new(worldX, underMinY + (underHeight / 2), worldZ), Vector3.new(step, underHeight, step), biome.Under)
 
-			local topThickness = math.clamp(2 + (math.abs(n2) * 3), 2, 6)
-			terrain:FillBlock(CFrame.new(worldX, height - (topThickness / 2), worldZ), Vector3.new(step, topThickness, step), topMaterial)
+			local topThickness = math.clamp((biome.TopThickness or 4) + (math.abs(n2) * 2), 3, 8)
+			local localTopMaterial = topMaterial
+
+			if biomeName == "Marsh" then
+				if biome.WaterLevel and height < (biome.WaterLevel + 1.5) then
+					localTopMaterial = Enum.Material.Grass
+				else
+					localTopMaterial = (n2 > 0.35) and Enum.Material.Grass or Enum.Material.Mud
+				end
+			elseif biomeName == "Plains" then
+				if math.abs(n2) > 0.62 and math.abs(n3) > 0.45 then
+					localTopMaterial = Enum.Material.Rock
+				else
+					localTopMaterial = Enum.Material.Grass
+				end
+			elseif biomeName == "Hills" then
+				if n1 > 0.35 and n3 > 0.25 then
+					localTopMaterial = Enum.Material.Grass
+				else
+					localTopMaterial = Enum.Material.Ground
+				end
+			elseif biomeName == "Lavascape" then
+				localTopMaterial = (ridge > 0.62) and Enum.Material.Basalt or Enum.Material.Rock
+			elseif biomeName == "Arctic" then
+				localTopMaterial = Enum.Material.Snow
+			end
+
+			terrain:FillBlock(CFrame.new(worldX, height - (topThickness / 2), worldZ), Vector3.new(step, topThickness, step), localTopMaterial)
 
 			if biome.WaterLevel and height < biome.WaterLevel then
 				local waterHeight = biome.WaterLevel - height
 				if waterHeight > 1 then
 					terrain:FillBlock(CFrame.new(worldX, height + (waterHeight / 2), worldZ), Vector3.new(step, waterHeight, step), Enum.Material.Water)
 				end
+			end
+
+			if biomeName == "Canyons" and ridge > 0.7 then
+				local pillarHeight = 4 + (ridge * 10)
+				terrain:FillBlock(CFrame.new(worldX, height + (pillarHeight / 2), worldZ), Vector3.new(step, pillarHeight, step), Enum.Material.Slate)
 			end
 		end
 	end
@@ -695,7 +728,7 @@ function MasterBuildManager.process_request(player: Player, payload: any): ()
 			return
 		end
 
-		local width = math.clamp(math.floor(payload.Width + 0.5), 64, 384)
+		local width = math.clamp(math.floor(payload.Width + 0.5), 96, 512)
 		local biomeName = typeof(payload.Biome) == "string" and payload.Biome or "Marsh"
 		local hideBaseplate = payload.HideBaseplate == true
 		local topMaterialOverride = typeof(payload.TopMaterial) == "EnumItem" and payload.TopMaterial.EnumType == Enum.Material and payload.TopMaterial or nil

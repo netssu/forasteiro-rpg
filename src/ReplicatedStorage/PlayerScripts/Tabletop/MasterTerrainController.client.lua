@@ -1,7 +1,6 @@
 ------------------//SERVICES
 local Players: Players = game:GetService("Players")
 local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Workspace: Workspace = game:GetService("Workspace")
 local UserInputService: UserInputService = game:GetService("UserInputService")
 
 ------------------//CONSTANTS
@@ -26,61 +25,61 @@ local biomeConfigs = {
 	Arctic = {
 		Material = Enum.Material.Snow,
 		Color = Color3.fromRGB(225, 235, 241),
-		Width = 192,
+		Width = 256,
 		Accent = Color3.fromRGB(189, 212, 224),
 	},
 	Dunes = {
 		Material = Enum.Material.Sand,
 		Color = Color3.fromRGB(215, 188, 133),
-		Width = 224,
+		Width = 288,
 		Accent = Color3.fromRGB(181, 152, 101),
 	},
 	Canyons = {
 		Material = Enum.Material.Slate,
 		Color = Color3.fromRGB(144, 99, 77),
-		Width = 208,
+		Width = 320,
 		Accent = Color3.fromRGB(117, 78, 62),
 	},
 	Lavascape = {
 		Material = Enum.Material.Basalt,
 		Color = Color3.fromRGB(89, 39, 36),
-		Width = 192,
+		Width = 288,
 		Accent = Color3.fromRGB(171, 74, 41),
 	},
 	Water = {
 		Material = Enum.Material.SmoothPlastic,
 		Color = Color3.fromRGB(63, 125, 194),
-		Width = 256,
+		Width = 320,
 		Accent = Color3.fromRGB(99, 170, 212),
 	},
 	Mountains = {
 		Material = Enum.Material.Rock,
 		Color = Color3.fromRGB(115, 120, 123),
-		Width = 224,
+		Width = 320,
 		Accent = Color3.fromRGB(87, 91, 95),
 	},
 	Hills = {
 		Material = Enum.Material.Grass,
 		Color = Color3.fromRGB(100, 148, 76),
-		Width = 208,
+		Width = 288,
 		Accent = Color3.fromRGB(71, 115, 52),
 	},
 	Plains = {
 		Material = Enum.Material.Grass,
 		Color = Color3.fromRGB(118, 161, 81),
-		Width = 256,
+		Width = 352,
 		Accent = Color3.fromRGB(93, 136, 58),
 	},
 	Marsh = {
 		Material = Enum.Material.Mud,
 		Color = Color3.fromRGB(81, 103, 70),
-		Width = 240,
+		Width = 320,
 		Accent = Color3.fromRGB(57, 73, 47),
 	},
 }
 
 local biomeOrder = {"Arctic", "Dunes", "Canyons", "Lavascape", "Water", "Mountains", "Hills", "Plains", "Marsh"}
-local widthOptions = {128, 192, 256, 320}
+local widthOptions = {192, 256, 320, 384, 448, 512}
 local colorPresets = {
 	Color3.fromRGB(94, 132, 76),
 	Color3.fromRGB(143, 122, 86),
@@ -179,14 +178,6 @@ end
 
 local function get_biome_config()
 	return biomeConfigs[state.SelectedBiome] or biomeConfigs.Marsh
-end
-
-local function brighten(color: Color3, factor: number): Color3
-	return Color3.new(
-		math.clamp(color.R * factor, 0, 1),
-		math.clamp(color.G * factor, 0, 1),
-		math.clamp(color.B * factor, 0, 1)
-	)
 end
 
 local function apply_terrain(): ()
@@ -359,7 +350,6 @@ local function build_terrain_ui(masterGui: ScreenGui): ()
 			local biome = get_biome_config()
 			state.SelectedMaterial = biome.Material
 			state.SelectedColor = biome.Color
-			state.SelectedWidth = biome.Width
 			refresh_selection_visuals()
 		end)
 
