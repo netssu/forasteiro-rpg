@@ -124,6 +124,9 @@ end
 
 local function should_room_replace_wall(newKind: string, newSize: Vector3, newCFrame: CFrame, existingPart: BasePart): boolean
 	local existingKind = get_build_kind(existingPart)
+	if existingPart:GetAttribute("PreserveOnRoomReplace") == true then
+		return false
+	end
 
 	if not is_wall_like_kind(newKind, newSize) then
 		return false
