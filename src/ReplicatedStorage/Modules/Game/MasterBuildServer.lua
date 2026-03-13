@@ -9,9 +9,12 @@ local OVERLAP_PADDING: number = 0.05
 local WALL_THICKNESS_RATIO: number = 0.45
 local WALL_HEIGHT_RATIO: number = 1.25
 local WALL_ALIGNMENT_DOT: number = 0.92
+local BASEPLATE_NAME: string = "Baseplate"
 
 ------------------//VARIABLES
 local MasterBuildManager = {}
+local cachedBaseplate: BasePart? = nil
+local cachedBaseplateParent: Instance? = nil
 
 ------------------//FUNCTIONS
 local function get_build_folder(): Folder?
@@ -280,7 +283,7 @@ local function destroy_room_overlapping_walls(size: Vector3, cframe: CFrame, bui
 	end
 end
 
-local function apply_part_visuals(part: BasePart, color: Color3?, buildKind: string, lightRange: number?, lightBrightness: number?): ()
+local function apply_part_visuals(part: BasePart, color: Color3?, buildKind: string, lightRange: number?, lightBrightness: number?, materialOverride: Enum.Material?): ()
 	part.Color = sanitize_color(color)
 	part.TopSurface = Enum.SurfaceType.Smooth
 	part.BottomSurface = Enum.SurfaceType.Smooth
@@ -302,7 +305,7 @@ local function apply_part_visuals(part: BasePart, color: Color3?, buildKind: str
 		pointLight.Brightness = typeof(lightBrightness) == "number" and lightBrightness or 2
 		pointLight.Shadows = true
 	else
-		part.Material = Enum.Material.SmoothPlastic
+		part.Material = materialOverride or Enum.Material.SmoothPlastic
 
 		local pointLight = part:FindFirstChildOfClass("PointLight")
 		if pointLight then
@@ -321,7 +324,37 @@ local function apply_extra_attributes(part: BasePart, extraAttributes: {[string]
 	end
 end
 
-local function create_build_part(size: Vector3, cframe: CFrame, color: Color3?, buildKind: string?, lightRange: number?, lightBrightness: number?, extraAttributes: {[string]: any}?, allowRoomReplacement: boolean?, preferNewWall: boolean?): BasePart?
+local function get_baseplate(): BasePart?
+	if cachedBaseplate and cachedBaseplate.Parent ~= nil then
+		return cachedBaseplate
+	end
+
+	local baseplate = workspace:FindFirstChild(BASEPLATE_NAME)
+	if baseplate and baseplate:IsA("BasePart") then
+		cachedBaseplate = baseplate
+		cachedBaseplateParent = baseplate.Parent
+		return baseplate
+	end
+
+	return nil
+end
+
+local function set_baseplate_enabled(enabled: boolean): ()
+	local baseplate = get_baseplate()
+	if not baseplate then
+		return
+	end
+
+	if enabled then
+		baseplate.Parent = cachedBaseplateParent or workspace
+		return
+	end
+
+	cachedBaseplateParent = baseplate.Parent
+	baseplate.Parent = nil
+end
+
+local function create_build_part(size: Vector3, cframe: CFrame, color: Color3?, buildKind: string?, lightRange: number?, lightBrightness: number?, extraAttributes: {[string]: any}?, allowRoomReplacement: boolean?, preferNewWall: boolean?, materialOverride: Enum.Material?): BasePart?
 	local folder = get_build_folder()
 	if not folder then
 		return nil
@@ -359,7 +392,7 @@ local function create_build_part(size: Vector3, cframe: CFrame, color: Color3?, 
 							replacementPart.CanQuery = true
 							replacementPart.Size = sanitize_size(replacement.Size)
 							replacementPart.CFrame = replacement.CFrame
-							apply_part_visuals(replacementPart, sourceColor, sourceKind, nil, nil)
+							apply_part_visuals(replacementPart, sourceColor, sourceKind, nil, nil, materialOverride)
 							for attributeName, attributeValue in sourceAttributes do
 								replacementPart:SetAttribute(attributeName, attributeValue)
 							end
@@ -390,7 +423,7 @@ local function create_build_part(size: Vector3, cframe: CFrame, color: Color3?, 
 		part.Size = sanitize_size(fragment.Size)
 		part.CFrame = fragment.CFrame
 
-		apply_part_visuals(part, color, finalKind, lightRange, lightBrightness)
+		apply_part_visuals(part, color, finalKind, lightRange, lightBrightness, materialOverride)
 		apply_extra_attributes(part, extraAttributes)
 
 		part.Parent = folder
@@ -402,7 +435,7 @@ local function create_build_part(size: Vector3, cframe: CFrame, color: Color3?, 
 	return firstPart
 end
 
-local function update_build_part(part: BasePart, size: Vector3?, cframe: CFrame?, color: Color3?, lightRange: number?, lightBrightness: number?): ()
+local function update_build_part(part: BasePart, size: Vector3?, cframe: CFrame?, color: Color3?, lightRange: number?, lightBrightness: number?, materialOverride: Enum.Material?): ()
 	local finalSize = size and sanitize_size(size) or part.Size
 	local finalCFrame = cframe or part.CFrame
 	local buildKind = get_build_kind(part)
@@ -411,7 +444,9 @@ local function update_build_part(part: BasePart, size: Vector3?, cframe: CFrame?
 	part.CFrame = finalCFrame
 
 	if color or buildKind == "Light" then
-		apply_part_visuals(part, color or part.Color, buildKind, lightRange, lightBrightness)
+		apply_part_visuals(part, color or part.Color, buildKind, lightRange, lightBrightness, materialOverride)
+	elseif materialOverride and buildKind ~= "Light" then
+		part.Material = materialOverride
 	end
 
 	if lightRange or lightBrightness then
@@ -466,7 +501,10 @@ function MasterBuildManager.process_request(player: Player, payload: any): ()
 		local lightRange = typeof(payload.LightRange) == "number" and payload.LightRange or nil
 		local lightBrightness = typeof(payload.LightBrightness) == "number" and payload.LightBrightness or nil
 
-		create_build_part(payload.Size, payload.CFrame, color, buildKind, lightRange, lightBrightness, nil, false, false)
+		local materialOverride = typeof(payload.Material) == "EnumItem" and payload.Material.EnumType == Enum.Material and payload.Material or nil
+		local extraAttributes = typeof(payload.ExtraAttributes) == "table" and payload.ExtraAttributes or nil
+
+		create_build_part(payload.Size, payload.CFrame, color, buildKind, lightRange, lightBrightness, extraAttributes, false, false, materialOverride)
 		return
 	end
 
@@ -502,7 +540,8 @@ function MasterBuildManager.process_request(player: Player, payload: any): ()
 					nil,
 					next(extraAttributes) and extraAttributes or nil,
 					true,
-					roomHasDoors
+					roomHasDoors,
+					nil
 				)
 			end
 		end
@@ -522,7 +561,17 @@ function MasterBuildManager.process_request(player: Player, payload: any): ()
 		local lightRange = typeof(payload.LightRange) == "number" and payload.LightRange or nil
 		local lightBrightness = typeof(payload.LightBrightness) == "number" and payload.LightBrightness or nil
 
-		update_build_part(part, size, cframe, color, lightRange, lightBrightness)
+		local materialOverride = typeof(payload.Material) == "EnumItem" and payload.Material.EnumType == Enum.Material and payload.Material or nil
+		update_build_part(part, size, cframe, color, lightRange, lightBrightness, materialOverride)
+		return
+	end
+
+	if action == "SetBaseplateEnabled" then
+		if typeof(payload.Enabled) ~= "boolean" then
+			return
+		end
+
+		set_baseplate_enabled(payload.Enabled)
 		return
 	end
 
