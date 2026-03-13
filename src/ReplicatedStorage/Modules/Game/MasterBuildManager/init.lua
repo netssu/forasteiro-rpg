@@ -5,20 +5,9 @@ local RunService: RunService = game:GetService("RunService")
 
 ------------------//MODULES
 local RoomBuilder = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Game"):WaitForChild("RoomBuilder"))
-
-local masterBuildFolder: Folder = script
-
-local MasterBuildState = require(masterBuildFolder:WaitForChild("MasterBuildState"))
-local MasterBuildConstants = require(masterBuildFolder:WaitForChild("MasterBuildConstants"))
-local MasterBuildUtility = require(masterBuildFolder:WaitForChild("MasterBuildUtility"))
-local MasterBuildPermissions = require(masterBuildFolder:WaitForChild("MasterBuildPermissions"))
-local MasterBuildRaycast = require(masterBuildFolder:WaitForChild("MasterBuildRaycast"))
-local MasterBuildGui = require(masterBuildFolder:WaitForChild("MasterBuildGui"))
-local MasterBuildSelection = require(masterBuildFolder:WaitForChild("MasterBuildSelection"))
-local MasterBuildPreview = require(masterBuildFolder:WaitForChild("MasterBuildPreview"))
-local MasterBuildDrag = require(masterBuildFolder:WaitForChild("MasterBuildDrag"))
-local MasterBuildActions = require(masterBuildFolder:WaitForChild("MasterBuildActions"))
-local MasterBuildHitbox = require(masterBuildFolder:WaitForChild("MasterBuildHitbox"))
+local MasterBuildCore = require(script:WaitForChild("MasterBuildCore"))
+local MasterBuildInterface = require(script:WaitForChild("MasterBuildInterface"))
+local MasterBuildInteraction = require(script:WaitForChild("MasterBuildInteraction"))
 
 ------------------//VARIABLES
 local module = {}
@@ -141,39 +130,46 @@ end
 function module.new(player: Player)
 	local self = setmetatable({}, module)
 
-	self.state = MasterBuildState.new(player)
-
 	self.modules = {
-		Constants = MasterBuildConstants,
-		Utility = MasterBuildUtility,
-		Permissions = MasterBuildPermissions,
-		Raycast = MasterBuildRaycast,
-		Gui = MasterBuildGui,
-		Selection = MasterBuildSelection,
-		Preview = MasterBuildPreview,
-		Drag = MasterBuildDrag,
-		Actions = MasterBuildActions,
-		Hitbox = MasterBuildHitbox,
+		Core = MasterBuildCore,
+		Interface = MasterBuildInterface,
+		Interaction = MasterBuildInteraction,
 		RoomBuilder = RoomBuilder,
+
+		Constants = MasterBuildCore.Constants,
+		Utility = MasterBuildCore.Utility,
+		State = MasterBuildCore.State,
+		Permissions = MasterBuildCore.Permissions,
+		Raycast = MasterBuildCore.Raycast,
+
+		Gui = MasterBuildInterface.Gui,
+
+		Selection = MasterBuildInteraction.Selection,
+		Preview = MasterBuildInteraction.Preview,
+		Drag = MasterBuildInteraction.Drag,
+		Actions = MasterBuildInteraction.Actions,
+		Hitbox = MasterBuildInteraction.Hitbox,
 	}
 
-	MasterBuildGui.cache_gui_objects(self)
-	MasterBuildGui.sync_room_height_default(self)
-	MasterBuildGui.sync_boxes_from_state(self)
+	self.state = self.modules.State.new(player)
 
-	MasterBuildSelection.ensure_highlight(self)
-	MasterBuildSelection.ensure_hover_highlight(self)
-	MasterBuildSelection.ensure_handles(self)
-	MasterBuildPreview.ensure_preview_part(self)
+	self.modules.Gui.cache_gui_objects(self)
+	self.modules.Gui.sync_room_height_default(self)
+	self.modules.Gui.sync_boxes_from_state(self)
 
-	MasterBuildDrag.connect_handles(self)
-	MasterBuildGui.connect_buttons(self)
+	self.modules.Selection.ensure_highlight(self)
+	self.modules.Selection.ensure_hover_highlight(self)
+	self.modules.Selection.ensure_handles(self)
+	self.modules.Preview.ensure_preview_part(self)
 
-	MasterBuildGui.update_mode_buttons(self)
-	MasterBuildPreview.hide_preview(self)
-	MasterBuildSelection.clear_selection(self)
-	MasterBuildSelection.clear_hover_highlight(self)
-	MasterBuildGui.set_status(self, "Modo livre")
+	self.modules.Drag.connect_handles(self)
+	self.modules.Gui.connect_buttons(self)
+
+	self.modules.Gui.update_mode_buttons(self)
+	self.modules.Preview.hide_preview(self)
+	self.modules.Selection.clear_selection(self)
+	self.modules.Selection.clear_hover_highlight(self)
+	self.modules.Gui.set_status(self, "Modo livre")
 
 	connect_player_signals(self)
 	connect_runtime(self)
