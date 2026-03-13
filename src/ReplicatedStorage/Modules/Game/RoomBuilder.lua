@@ -39,19 +39,31 @@ local function slice_wall(wallCFrame, wallSize, doorCFrame, doorSize)
 	if iMin >= iMax then return {{CFrame = wallCFrame, Size = wallSize}} end
 
 	local parts = {}
+	local doorWallAttributes = {
+		PreserveOnRoomReplace = true,
+		HasDoorOpening = true,
+	}
 
 	-- Pedaço da esquerda
 	if wMin < iMin then
 		local len = iMin - wMin
 		local centerZ = wMin + len/2
-		table.insert(parts, {Size = Vector3.new(wallSize.X, wallSize.Y, len), CFrame = wallCFrame * CFrame.new(0, 0, centerZ)})
+		table.insert(parts, {
+			Size = Vector3.new(wallSize.X, wallSize.Y, len),
+			CFrame = wallCFrame * CFrame.new(0, 0, centerZ),
+			ExtraAttributes = doorWallAttributes,
+		})
 	end
 
 	-- Pedaço da direita
 	if iMax < wMax then
 		local len = wMax - iMax
 		local centerZ = iMax + len/2
-		table.insert(parts, {Size = Vector3.new(wallSize.X, wallSize.Y, len), CFrame = wallCFrame * CFrame.new(0, 0, centerZ)})
+		table.insert(parts, {
+			Size = Vector3.new(wallSize.X, wallSize.Y, len),
+			CFrame = wallCFrame * CFrame.new(0, 0, centerZ),
+			ExtraAttributes = doorWallAttributes,
+		})
 	end
 
 	-- Pedaço de Cima e de Baixo (para tapar o vão da porta)
@@ -67,14 +79,22 @@ local function slice_wall(wallCFrame, wallSize, doorCFrame, doorSize)
 	if holeTopY < wallTopY then
 		local topHeight = wallTopY - holeTopY
 		local centerY = holeTopY + topHeight/2
-		table.insert(parts, {Size = Vector3.new(wallSize.X, topHeight, len), CFrame = wallCFrame * CFrame.new(0, centerY, centerZ)})
+		table.insert(parts, {
+			Size = Vector3.new(wallSize.X, topHeight, len),
+			CFrame = wallCFrame * CFrame.new(0, centerY, centerZ),
+			ExtraAttributes = doorWallAttributes,
+		})
 	end
 
 	-- Batente em baixo da porta (se a porta não chegar no chão por algum motivo)
 	if holeBottomY > wallBottomY then
 		local botHeight = holeBottomY - wallBottomY
 		local botCenterY = wallBottomY + botHeight/2
-		table.insert(parts, {Size = Vector3.new(wallSize.X, botHeight, len), CFrame = wallCFrame * CFrame.new(0, botCenterY, centerZ)})
+		table.insert(parts, {
+			Size = Vector3.new(wallSize.X, botHeight, len),
+			CFrame = wallCFrame * CFrame.new(0, botCenterY, centerZ),
+			ExtraAttributes = doorWallAttributes,
+		})
 	end
 
 	return parts
@@ -142,48 +162,24 @@ function RoomBuilder.get_room_data(exactPos, gridSize, wallHeight, wallThickness
 	for _, d in RoomBuilder.Doors do table.insert(allDoors, d) end
 	if hoveringDoor then table.insert(allDoors, hoveringDoor) end
 
-	local raycastParams = RaycastParams.new()
-	raycastParams.FilterType = Enum.RaycastFilterType.Include
-	local buildFolder = workspace:FindFirstChild("TabletopBuildParts")
-	if buildFolder then
-		raycastParams.FilterDescendantsInstances = {buildFolder}
-	end
-
 	for _, door in allDoors do
 		local nextWalls = {}
 		for _, wall in currentWalls do
 			local sliced = slice_wall(wall.CFrame, wall.Size, door.CFrame, door.Size)
 
-			if #sliced ~= 1 or sliced[1].Size ~= wall.Size then
-				local isBlocked = false
-				if buildFolder then
-					local normal = wall.CFrame.RightVector
-					local maxDist = (wall.Size.X / 2) + 1
-					local hitFw = workspace:Raycast(door.CFrame.Position, normal * maxDist, raycastParams)
-					local hitBw = workspace:Raycast(door.CFrame.Position, -normal * maxDist, raycastParams)
-
-					if hitFw and hitFw.Instance:GetAttribute("BuildKind") == "Wall" then
-						isBlocked = true
-					elseif hitBw and hitBw.Instance:GetAttribute("BuildKind") == "Wall" then
-						isBlocked = true
-					end
-				end
-
-				if isBlocked then
-					table.insert(nextWalls, wall)
-				else
-					for _, s in sliced do table.insert(nextWalls, s) end
-				end
-			else
-				for _, s in sliced do table.insert(nextWalls, s) end
-			end
+			for _, s in sliced do table.insert(nextWalls, s) end
 		end
 		currentWalls = nextWalls
 	end
 
 	local parts = {}
 	for _, w in currentWalls do
-		table.insert(parts, {Size = w.Size, CFrame = w.CFrame, BuildKind = "Wall"})
+		table.insert(parts, {
+			Size = w.Size,
+			CFrame = w.CFrame,
+			BuildKind = "Wall",
+			ExtraAttributes = w.ExtraAttributes,
+		})
 	end
 
 	if createWithFloor then
