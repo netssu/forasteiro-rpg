@@ -39,6 +39,10 @@ local function slice_wall(wallCFrame, wallSize, doorCFrame, doorSize)
 	if iMin >= iMax then return {{CFrame = wallCFrame, Size = wallSize}} end
 
 	local parts = {}
+	local doorWallAttributes = {
+		PreserveOnRoomReplace = true,
+		HasDoorOpening = true,
+	}
 
 	-- Pedaço da esquerda
 	if wMin < iMin then
