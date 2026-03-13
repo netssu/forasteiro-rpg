@@ -51,7 +51,11 @@ local function slice_wall(wallCFrame, wallSize, doorCFrame, doorSize)
 		table.insert(parts, {
 			Size = Vector3.new(wallSize.X, wallSize.Y, len),
 			CFrame = wallCFrame * CFrame.new(0, 0, centerZ),
-			ExtraAttributes = doorWallAttributes,
+			ExtraAttributes = {
+				IsDoorFrameSegment = true,
+				DoorFrameSegmentType = "Side",
+				HasDoorOpening = true,
+			},
 		})
 	end
 
@@ -62,7 +66,11 @@ local function slice_wall(wallCFrame, wallSize, doorCFrame, doorSize)
 		table.insert(parts, {
 			Size = Vector3.new(wallSize.X, wallSize.Y, len),
 			CFrame = wallCFrame * CFrame.new(0, 0, centerZ),
-			ExtraAttributes = doorWallAttributes,
+			ExtraAttributes = {
+				IsDoorFrameSegment = true,
+				DoorFrameSegmentType = "Side",
+				HasDoorOpening = true,
+			},
 		})
 	end
 
@@ -82,7 +90,11 @@ local function slice_wall(wallCFrame, wallSize, doorCFrame, doorSize)
 		table.insert(parts, {
 			Size = Vector3.new(wallSize.X, topHeight, len),
 			CFrame = wallCFrame * CFrame.new(0, centerY, centerZ),
-			ExtraAttributes = doorWallAttributes,
+			ExtraAttributes = {
+				IsDoorFrameSegment = true,
+				DoorFrameSegmentType = "Top",
+				HasDoorOpening = true,
+			},
 		})
 	end
 
@@ -93,7 +105,11 @@ local function slice_wall(wallCFrame, wallSize, doorCFrame, doorSize)
 		table.insert(parts, {
 			Size = Vector3.new(wallSize.X, botHeight, len),
 			CFrame = wallCFrame * CFrame.new(0, botCenterY, centerZ),
-			ExtraAttributes = doorWallAttributes,
+			ExtraAttributes = {
+				IsDoorFrameSegment = true,
+				DoorFrameSegmentType = "Bottom",
+				HasDoorOpening = true,
+			},
 		})
 	end
 
