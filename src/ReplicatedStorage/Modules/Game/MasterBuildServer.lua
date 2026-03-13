@@ -206,14 +206,38 @@ local function resolve_room_wall_fragments(size: Vector3, cframe: CFrame, buildK
 	return fragments
 end
 
-local function resolve_existing_wall_fragments(size: Vector3, cframe: CFrame, buildKind: string): ({[BasePart]: {{Size: Vector3, CFrame: CFrame}}}, {[BasePart]: boolean})
+local function resolve_existing_wall_fragments(size: Vector3, cframe: CFrame, buildKind: string, extraAttributes: {[string]: any}?): ({[BasePart]: {{Size: Vector3, CFrame: CFrame}}}, {[BasePart]: boolean})
 	local overlaps = collect_overlapping_build_parts(size, cframe)
 	local replacementsByPart = {}
 	local partsToDestroy = {}
+	local cutouts = {
+		{Size = size, CFrame = cframe},
+	}
+
+	if extraAttributes and extraAttributes.HasDoorOpening == true
+		and typeof(extraAttributes.DoorCutCFrame) == "CFrame"
+		and typeof(extraAttributes.DoorCutSize) == "Vector3" then
+		table.insert(cutouts, {
+			Size = extraAttributes.DoorCutSize,
+			CFrame = extraAttributes.DoorCutCFrame,
+		})
+	end
 
 	for _, hitPart in overlaps do
 		if should_room_replace_wall(buildKind, size, cframe, hitPart) then
-			local sliced = subtract_wall_overlap(hitPart.Size, hitPart.CFrame, size, cframe)
+			local sliced = {{Size = hitPart.Size, CFrame = hitPart.CFrame}}
+
+			for _, cutout in cutouts do
+				local nextSliced = {}
+				for _, fragment in sliced do
+					local fragmentPieces = subtract_wall_overlap(fragment.Size, fragment.CFrame, cutout.Size, cutout.CFrame)
+					for _, piece in fragmentPieces do
+						table.insert(nextSliced, piece)
+					end
+				end
+				sliced = nextSliced
+			end
+
 			replacementsByPart[hitPart] = sliced
 			partsToDestroy[hitPart] = true
 		end
@@ -312,7 +336,7 @@ local function create_build_part(size: Vector3, cframe: CFrame, color: Color3?, 
 			local shouldPreferNewWall = preferNewWall == true
 
 			if shouldPreferNewWall then
-				local replacementsByPart, partsToDestroy = resolve_existing_wall_fragments(finalSize, cframe, finalKind)
+				local replacementsByPart, partsToDestroy = resolve_existing_wall_fragments(finalSize, cframe, finalKind, extraAttributes)
 				for partToDestroy in partsToDestroy do
 					local sourceColor = partToDestroy.Color
 					local sourceKind = get_build_kind(partToDestroy)

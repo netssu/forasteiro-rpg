@@ -55,6 +55,8 @@ local function slice_wall(wallCFrame, wallSize, doorCFrame, doorSize)
 				IsDoorFrameSegment = true,
 				DoorFrameSegmentType = "Side",
 				HasDoorOpening = true,
+				DoorCutCFrame = doorCFrame,
+				DoorCutSize = doorSize,
 			},
 		})
 	end
@@ -70,6 +72,8 @@ local function slice_wall(wallCFrame, wallSize, doorCFrame, doorSize)
 				IsDoorFrameSegment = true,
 				DoorFrameSegmentType = "Side",
 				HasDoorOpening = true,
+				DoorCutCFrame = doorCFrame,
+				DoorCutSize = doorSize,
 			},
 		})
 	end
@@ -94,6 +98,8 @@ local function slice_wall(wallCFrame, wallSize, doorCFrame, doorSize)
 				IsDoorFrameSegment = true,
 				DoorFrameSegmentType = "Top",
 				HasDoorOpening = true,
+				DoorCutCFrame = doorCFrame,
+				DoorCutSize = doorSize,
 			},
 		})
 	end
@@ -109,6 +115,8 @@ local function slice_wall(wallCFrame, wallSize, doorCFrame, doorSize)
 				IsDoorFrameSegment = true,
 				DoorFrameSegmentType = "Bottom",
 				HasDoorOpening = true,
+				DoorCutCFrame = doorCFrame,
+				DoorCutSize = doorSize,
 			},
 		})
 	end
