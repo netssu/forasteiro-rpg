@@ -330,6 +330,7 @@ local function create_build_part(size: Vector3, cframe: CFrame, color: Color3?, 
 	local finalSize = sanitize_size(size)
 	local finalKind = buildKind or "Part"
 	local fragments = {{Size = finalSize, CFrame = cframe}}
+	local minFragmentHeight = finalSize.Y - 0.01
 
 	if allowRoomReplacement == true then
 		if is_wall_like_kind(finalKind, finalSize) then
@@ -346,6 +347,10 @@ local function create_build_part(size: Vector3, cframe: CFrame, color: Color3?, 
 					local replacements = replacementsByPart[partToDestroy]
 					if replacements then
 						for _, replacement in replacements do
+							if replacement.Size.Y < minFragmentHeight then
+								continue
+							end
+
 							local replacementPart = Instance.new("Part")
 							replacementPart.Name = "BuildPart"
 							replacementPart.Anchored = true
@@ -372,6 +377,10 @@ local function create_build_part(size: Vector3, cframe: CFrame, color: Color3?, 
 
 	local firstPart = nil
 	for _, fragment in fragments do
+		if fragment.Size.Y < minFragmentHeight then
+			continue
+		end
+
 		local part = Instance.new("Part")
 		part.Name = "BuildPart"
 		part.Anchored = true
