@@ -107,6 +107,9 @@ end
 
 local function should_room_replace_wall(newKind: string, newSize: Vector3, newCFrame: CFrame, existingPart: BasePart): boolean
 	local existingKind = get_build_kind(existingPart)
+	if existingPart:GetAttribute("PreserveOnRoomReplace") == true then
+		return false
+	end
 
 	if not is_wall_like_kind(newKind, newSize) then
 		return false
@@ -303,6 +306,17 @@ function MasterBuildManager.process_request(player: Player, payload: any): ()
 			if typeof(partData) == "table"
 				and typeof(partData.Size) == "Vector3"
 				and typeof(partData.CFrame) == "CFrame" then
+				local extraAttributes = {}
+				if roomId then
+					extraAttributes.RoomId = roomId
+				end
+
+				if typeof(partData.ExtraAttributes) == "table" then
+					for attributeName, attributeValue in partData.ExtraAttributes do
+						extraAttributes[attributeName] = attributeValue
+					end
+				end
+
 				create_build_part(
 					partData.Size,
 					partData.CFrame,
@@ -310,7 +324,7 @@ function MasterBuildManager.process_request(player: Player, payload: any): ()
 					typeof(partData.BuildKind) == "string" and partData.BuildKind or nil,
 					nil,
 					nil,
-					roomId and {RoomId = roomId} or nil,
+					next(extraAttributes) and extraAttributes or nil,
 					true
 				)
 			end
