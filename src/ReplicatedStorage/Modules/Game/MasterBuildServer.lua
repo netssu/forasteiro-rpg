@@ -10,11 +10,25 @@ local WALL_THICKNESS_RATIO: number = 0.45
 local WALL_HEIGHT_RATIO: number = 1.25
 local WALL_ALIGNMENT_DOT: number = 0.92
 local BASEPLATE_NAME: string = "Baseplate"
+local TERRAIN_STEP_SIZE: number = 8
 
 ------------------//VARIABLES
 local MasterBuildManager = {}
 local cachedBaseplate: BasePart? = nil
 local cachedBaseplateParent: Instance? = nil
+local terrainStateByUserId: {[number]: {Center: Vector3, Width: number, MinY: number, MaxY: number}} = {}
+
+local TERRAIN_BIOMES = {
+	Arctic = {Top = Enum.Material.Snow, Under = Enum.Material.Rock, BaseHeight = 20, Amplitude = 10, NoiseScale = 0.025, Ridge = 6, WaterLevel = nil},
+	Dunes = {Top = Enum.Material.Sand, Under = Enum.Material.Sandstone, BaseHeight = 18, Amplitude = 8, NoiseScale = 0.03, Ridge = 10, WaterLevel = nil},
+	Canyons = {Top = Enum.Material.Slate, Under = Enum.Material.Rock, BaseHeight = 24, Amplitude = 14, NoiseScale = 0.018, Ridge = 12, WaterLevel = nil},
+	Lavascape = {Top = Enum.Material.Basalt, Under = Enum.Material.Rock, BaseHeight = 20, Amplitude = 9, NoiseScale = 0.022, Ridge = 8, WaterLevel = nil},
+	Water = {Top = Enum.Material.Sand, Under = Enum.Material.Rock, BaseHeight = 8, Amplitude = 5, NoiseScale = 0.03, Ridge = 2, WaterLevel = 18},
+	Mountains = {Top = Enum.Material.Rock, Under = Enum.Material.Slate, BaseHeight = 30, Amplitude = 18, NoiseScale = 0.015, Ridge = 14, WaterLevel = nil},
+	Hills = {Top = Enum.Material.Grass, Under = Enum.Material.Ground, BaseHeight = 18, Amplitude = 8, NoiseScale = 0.024, Ridge = 5, WaterLevel = nil},
+	Plains = {Top = Enum.Material.Grass, Under = Enum.Material.Ground, BaseHeight = 14, Amplitude = 4, NoiseScale = 0.028, Ridge = 2, WaterLevel = nil},
+	Marsh = {Top = Enum.Material.Mud, Under = Enum.Material.Ground, BaseHeight = 12, Amplitude = 5, NoiseScale = 0.026, Ridge = 3, WaterLevel = 16},
+}
 
 ------------------//FUNCTIONS
 local function get_build_folder(): Folder?
@@ -479,6 +493,103 @@ local function move_character_to_cframe(character: Model, targetCFrame: CFrame):
 	rootPart.CFrame = targetCFrame
 end
 
+local function clear_terrain_region(center: Vector3, width: number, minY: number, maxY: number): ()
+	local terrain = workspace.Terrain
+	local height = math.max(4, maxY - minY)
+	local cframe = CFrame.new(center.X, minY + (height / 2), center.Z)
+	terrain:FillBlock(cframe, Vector3.new(width, height, width), Enum.Material.Air)
+end
+
+local function move_all_characters_above(yLevel: number): ()
+	local charactersFolder = workspace:FindFirstChild("Characters")
+	if not charactersFolder or not charactersFolder:IsA("Folder") then
+		return
+	end
+
+	for _, character in charactersFolder:GetChildren() do
+		if character:IsA("Model") then
+			local rootPart = character:FindFirstChild("HumanoidRootPart")
+			if rootPart and rootPart:IsA("BasePart") and rootPart.Position.Y < yLevel then
+				local pos = Vector3.new(rootPart.Position.X, yLevel, rootPart.Position.Z)
+				local forward = Vector3.new(rootPart.CFrame.LookVector.X, 0, rootPart.CFrame.LookVector.Z)
+				if forward.Magnitude < 0.001 then
+					forward = Vector3.new(0, 0, -1)
+				else
+					forward = forward.Unit
+				end
+				move_character_to_cframe(character, CFrame.new(pos, pos + forward))
+			end
+		end
+	end
+end
+
+local function generate_biome_terrain(userId: number, center: Vector3, width: number, biomeName: string, hideBaseplate: boolean, topMaterialOverride: Enum.Material?, relief: number): ()
+	local biome = TERRAIN_BIOMES[biomeName] or TERRAIN_BIOMES.Marsh
+	local topMaterial = topMaterialOverride or biome.Top
+	local reliefFactor = math.clamp(relief, 0.6, 1.8)
+	local terrain = workspace.Terrain
+	local seed = (userId % 997) * 0.11
+	local half = width / 2
+	local step = TERRAIN_STEP_SIZE
+	local minY = center.Y - 64
+	local maxY = center.Y + biome.BaseHeight + (biome.Amplitude * reliefFactor) + (biome.Ridge * reliefFactor) + 36
+
+	local oldState = terrainStateByUserId[userId]
+	if oldState then
+		clear_terrain_region(oldState.Center, oldState.Width, oldState.MinY, oldState.MaxY)
+	end
+
+	clear_terrain_region(center, width, minY, maxY)
+
+	for x = -half, half - step, step do
+		for z = -half, half - step, step do
+			local worldX = center.X + x + (step / 2)
+			local worldZ = center.Z + z + (step / 2)
+
+			local n1 = math.noise((worldX * biome.NoiseScale) + seed, (worldZ * biome.NoiseScale) - seed)
+			local n2 = math.noise((worldX * biome.NoiseScale * 2) - seed, (worldZ * biome.NoiseScale * 2) + seed)
+			local ridge = math.abs(math.noise((worldX * biome.NoiseScale * 0.65) + seed, (worldZ * biome.NoiseScale * 0.65) + seed))
+			local height = center.Y + biome.BaseHeight + (n1 * biome.Amplitude * reliefFactor) + (n2 * biome.Amplitude * 0.35 * reliefFactor) + (ridge * biome.Ridge * reliefFactor)
+
+			local underMinY = minY
+			local underHeight = math.max(6, height - underMinY)
+			terrain:FillBlock(CFrame.new(worldX, underMinY + (underHeight / 2), worldZ), Vector3.new(step, underHeight, step), biome.Under)
+
+			local topThickness = math.clamp(2 + (math.abs(n2) * 3), 2, 6)
+			terrain:FillBlock(CFrame.new(worldX, height - (topThickness / 2), worldZ), Vector3.new(step, topThickness, step), topMaterial)
+
+			if biome.WaterLevel and height < biome.WaterLevel then
+				local waterHeight = biome.WaterLevel - height
+				if waterHeight > 1 then
+					terrain:FillBlock(CFrame.new(worldX, height + (waterHeight / 2), worldZ), Vector3.new(step, waterHeight, step), Enum.Material.Water)
+				end
+			end
+		end
+	end
+
+	terrainStateByUserId[userId] = {
+		Center = center,
+		Width = width,
+		MinY = minY,
+		MaxY = maxY,
+	}
+
+	set_baseplate_enabled(not hideBaseplate)
+	move_all_characters_above(maxY + 8)
+end
+
+local function reset_generated_terrain(userId: number): ()
+	local state = terrainStateByUserId[userId]
+	if not state then
+		set_baseplate_enabled(true)
+		return
+	end
+
+	clear_terrain_region(state.Center, state.Width, state.MinY, state.MaxY)
+	terrainStateByUserId[userId] = nil
+	set_baseplate_enabled(true)
+end
+
 ------------------//MAIN FUNCTIONS
 function MasterBuildManager.process_request(player: Player, payload: any): ()
 	if player.Team == nil or player.Team.Name ~= MASTER_TEAM_NAME then
@@ -572,6 +683,29 @@ function MasterBuildManager.process_request(player: Player, payload: any): ()
 		end
 
 		set_baseplate_enabled(payload.Enabled)
+		return
+	end
+
+	if action == "GenerateBiomeTerrain" then
+		if typeof(payload.Center) ~= "Vector3" then
+			return
+		end
+
+		if typeof(payload.Width) ~= "number" then
+			return
+		end
+
+		local width = math.clamp(math.floor(payload.Width + 0.5), 64, 384)
+		local biomeName = typeof(payload.Biome) == "string" and payload.Biome or "Marsh"
+		local hideBaseplate = payload.HideBaseplate == true
+		local topMaterialOverride = typeof(payload.TopMaterial) == "EnumItem" and payload.TopMaterial.EnumType == Enum.Material and payload.TopMaterial or nil
+		local relief = typeof(payload.Relief) == "number" and payload.Relief or 1
+		generate_biome_terrain(player.UserId, payload.Center, width, biomeName, hideBaseplate, topMaterialOverride, relief)
+		return
+	end
+
+	if action == "ResetGeneratedTerrain" then
+		reset_generated_terrain(player.UserId)
 		return
 	end
 

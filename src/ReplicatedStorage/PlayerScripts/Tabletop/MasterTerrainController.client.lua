@@ -7,18 +7,12 @@ local UserInputService: UserInputService = game:GetService("UserInputService")
 ------------------//CONSTANTS
 local MASTER_TEAM_NAME: string = "Mestre"
 local GUI_NAME: string = "MasterGui"
-local BUILD_FOLDER_NAME: string = "TabletopBuildParts"
 local REMOTE_NAME: string = "MasterBuildEvent"
 
 local TERRAIN_TOGGLE_BUTTON_NAME: string = "TerrainToggleButton"
 local TERRAIN_WINDOW_NAME: string = "TerrainWindow"
 
-local TERRAIN_OWNER_ATTRIBUTE: string = "TerrainOwnerUserId"
-local TERRAIN_MANAGED_ATTRIBUTE: string = "TerrainManaged"
-local TERRAIN_LAYER_ATTRIBUTE: string = "TerrainLayer"
-
-local TERRAIN_THICKNESS: number = 12
-local CHARACTER_CLEARANCE: number = 4
+local TERRAIN_CENTER: Vector3 = Vector3.new(0, 0, 0)
 
 ------------------//VARIABLES
 local player: Player = Players.LocalPlayer
@@ -183,12 +177,6 @@ local function fire_build(action: string, payload: {[string]: any}): ()
 	masterBuildEvent:FireServer(payload)
 end
 
-local function set_baseplate_enabled(enabled: boolean): ()
-	fire_build("SetBaseplateEnabled", {
-		Enabled = enabled,
-	})
-end
-
 local function get_biome_config()
 	return biomeConfigs[state.SelectedBiome] or biomeConfigs.Marsh
 end
@@ -201,96 +189,6 @@ local function brighten(color: Color3, factor: number): Color3
 	)
 end
 
-local function get_build_folder(): Folder?
-	local folder = Workspace:FindFirstChild(BUILD_FOLDER_NAME)
-	if folder and folder:IsA("Folder") then
-		return folder
-	end
-	return nil
-end
-
-local function get_managed_terrain_part(layerName: string): BasePart?
-	local folder = get_build_folder()
-	if not folder then
-		return nil
-	end
-
-	for _, child in folder:GetChildren() do
-		if child:IsA("BasePart")
-			and child:GetAttribute(TERRAIN_MANAGED_ATTRIBUTE) == true
-			and child:GetAttribute(TERRAIN_OWNER_ATTRIBUTE) == player.UserId
-			and child:GetAttribute(TERRAIN_LAYER_ATTRIBUTE) == layerName then
-			return child
-		end
-	end
-
-	return nil
-end
-
-local function upsert_terrain_layer(layerName: string, size: Vector3, cframe: CFrame, color: Color3, material: Enum.Material): ()
-	local existing = get_managed_terrain_part(layerName)
-	if existing then
-		fire_build("UpdatePart", {
-			Part = existing,
-			Size = size,
-			CFrame = cframe,
-			Color = color,
-			Material = material,
-		})
-		return
-	end
-
-	fire_build("CreatePart", {
-		Size = size,
-		CFrame = cframe,
-		Color = color,
-		BuildKind = "Part",
-		Material = material,
-		ExtraAttributes = {
-			[TERRAIN_MANAGED_ATTRIBUTE] = true,
-			[TERRAIN_OWNER_ATTRIBUTE] = player.UserId,
-			[TERRAIN_LAYER_ATTRIBUTE] = layerName,
-			TerrainBiomeName = state.SelectedBiome,
-		},
-	})
-end
-
-local function delete_managed_layers(): ()
-	local folder = get_build_folder()
-	if not folder then
-		return
-	end
-
-	for _, child in folder:GetChildren() do
-		if child:IsA("BasePart")
-			and child:GetAttribute(TERRAIN_MANAGED_ATTRIBUTE) == true
-			and child:GetAttribute(TERRAIN_OWNER_ATTRIBUTE) == player.UserId then
-			fire_build("DeletePart", { Part = child })
-		end
-	end
-end
-
-local function lift_characters_above(topY: number): ()
-	local charactersFolder = Workspace:FindFirstChild("Characters")
-	if not charactersFolder or not charactersFolder:IsA("Folder") then
-		return
-	end
-
-	for _, character in charactersFolder:GetChildren() do
-		if character:IsA("Model") then
-			local root = character:FindFirstChild("HumanoidRootPart")
-			if root and root:IsA("BasePart") and root.Position.Y < topY then
-				local newPos = Vector3.new(root.Position.X, topY, root.Position.Z)
-				local look = root.CFrame.LookVector
-				fire_build("MoveCharacter", {
-					Character = character,
-					CFrame = CFrame.new(newPos, newPos + Vector3.new(look.X, 0, look.Z)),
-				})
-			end
-		end
-	end
-end
-
 local function apply_terrain(): ()
 	if not is_master() then
 		return
@@ -298,34 +196,16 @@ local function apply_terrain(): ()
 
 	local biome = get_biome_config()
 	local width = state.SelectedWidth > 0 and state.SelectedWidth or biome.Width
-	local topColor = brighten(state.SelectedColor, state.Brightness)
-	local material = state.SelectedMaterial
+	local relief = state.UseDetailLayer and (1 + ((state.Brightness - 1) * 0.8)) or (0.85 + ((state.Brightness - 1) * 0.6))
 
-	local baseplate = Workspace:FindFirstChild("Baseplate")
-	local baseY = baseplate and baseplate:IsA("BasePart") and baseplate.Position.Y or 0
-	local centerY = baseY + TERRAIN_THICKNESS / 2
-
-	local mainSize = Vector3.new(width, TERRAIN_THICKNESS, width)
-	local mainCFrame = CFrame.new(0, centerY, 0)
-	upsert_terrain_layer("Main", mainSize, mainCFrame, topColor, material)
-
-	if state.UseDetailLayer then
-		local accentColor = brighten(biome.Accent or topColor, state.Brightness * 0.95)
-		local detailSize = Vector3.new(width * 0.58, TERRAIN_THICKNESS + 0.1, width * 0.58)
-		local detailCFrame = CFrame.new(width * 0.08, centerY + 0.06, -width * 0.05)
-		upsert_terrain_layer("Detail", detailSize, detailCFrame, accentColor, material)
-	else
-		local detailPart = get_managed_terrain_part("Detail")
-		if detailPart then
-			fire_build("DeletePart", { Part = detailPart })
-		end
-	end
-
-	if state.HideBaseplate then
-		set_baseplate_enabled(false)
-	end
-
-	lift_characters_above(centerY + TERRAIN_THICKNESS / 2 + CHARACTER_CLEARANCE)
+	fire_build("GenerateBiomeTerrain", {
+		Center = TERRAIN_CENTER,
+		Width = width,
+		Biome = state.SelectedBiome,
+		TopMaterial = state.SelectedMaterial,
+		Relief = relief,
+		HideBaseplate = state.HideBaseplate,
+	})
 end
 
 local function restore_default_world(): ()
@@ -333,8 +213,7 @@ local function restore_default_world(): ()
 		return
 	end
 
-	delete_managed_layers()
-	set_baseplate_enabled(true)
+	fire_build("ResetGeneratedTerrain", {})
 end
 
 local function refresh_selection_visuals(): ()
