@@ -119,7 +119,107 @@ local function should_room_replace_wall(newKind: string, newSize: Vector3, newCF
 	return have_similar_wall_orientation(newSize, newCFrame, existingPart.Size, existingPart.CFrame)
 end
 
-local function collect_overlapping_build_parts(size: Vector3, cframe: CFrame): {BasePart}
+local collect_overlapping_build_parts: (size: Vector3, cframe: CFrame) -> {BasePart}
+
+local function subtract_wall_overlap(wallSize: Vector3, wallCFrame: CFrame, cutSize: Vector3, cutCFrame: CFrame): {{Size: Vector3, CFrame: CFrame}}
+	local localCut = wallCFrame:ToObjectSpace(cutCFrame)
+
+	local extX = math.abs(localCut.RightVector.X) * cutSize.X/2 + math.abs(localCut.UpVector.X) * cutSize.Y/2 + math.abs(localCut.LookVector.X) * cutSize.Z/2
+	local extY = math.abs(localCut.RightVector.Y) * cutSize.X/2 + math.abs(localCut.UpVector.Y) * cutSize.Y/2 + math.abs(localCut.LookVector.Y) * cutSize.Z/2
+	local extZ = math.abs(localCut.RightVector.Z) * cutSize.X/2 + math.abs(localCut.UpVector.Z) * cutSize.Y/2 + math.abs(localCut.LookVector.Z) * cutSize.Z/2
+
+	if math.abs(localCut.Position.X) > wallSize.X/2 + extX then return {{CFrame = wallCFrame, Size = wallSize}} end
+	if math.abs(localCut.Position.Y) > wallSize.Y/2 + extY then return {{CFrame = wallCFrame, Size = wallSize}} end
+	if math.abs(localCut.Position.Z) > wallSize.Z/2 + extZ then return {{CFrame = wallCFrame, Size = wallSize}} end
+
+	local dMin = localCut.Position.Z - extZ
+	local dMax = localCut.Position.Z + extZ
+	local wMin = -wallSize.Z/2
+	local wMax = wallSize.Z/2
+
+	local iMin = math.max(wMin, dMin)
+	local iMax = math.min(wMax, dMax)
+
+	if iMin >= iMax then return {{CFrame = wallCFrame, Size = wallSize}} end
+
+	local parts = {}
+
+	if wMin < iMin then
+		local len = iMin - wMin
+		local centerZ = wMin + len/2
+		table.insert(parts, {Size = Vector3.new(wallSize.X, wallSize.Y, len), CFrame = wallCFrame * CFrame.new(0, 0, centerZ)})
+	end
+
+	if iMax < wMax then
+		local len = wMax - iMax
+		local centerZ = iMax + len/2
+		table.insert(parts, {Size = Vector3.new(wallSize.X, wallSize.Y, len), CFrame = wallCFrame * CFrame.new(0, 0, centerZ)})
+	end
+
+	local holeTopY = localCut.Position.Y + extY
+	local holeBottomY = localCut.Position.Y - extY
+	local wallTopY = wallSize.Y/2
+	local wallBottomY = -wallSize.Y/2
+
+	local len = iMax - iMin
+	local centerZ = (iMin + iMax) / 2
+
+	if holeTopY < wallTopY then
+		local topHeight = wallTopY - holeTopY
+		local centerY = holeTopY + topHeight/2
+		table.insert(parts, {Size = Vector3.new(wallSize.X, topHeight, len), CFrame = wallCFrame * CFrame.new(0, centerY, centerZ)})
+	end
+
+	if holeBottomY > wallBottomY then
+		local botHeight = holeBottomY - wallBottomY
+		local botCenterY = wallBottomY + botHeight/2
+		table.insert(parts, {Size = Vector3.new(wallSize.X, botHeight, len), CFrame = wallCFrame * CFrame.new(0, botCenterY, centerZ)})
+	end
+
+	return parts
+end
+
+local function resolve_room_wall_fragments(size: Vector3, cframe: CFrame, buildKind: string): {{Size: Vector3, CFrame: CFrame}}
+	local fragments = {{Size = size, CFrame = cframe}}
+	local overlaps = collect_overlapping_build_parts(size, cframe)
+
+	for _, hitPart in overlaps do
+		local nextFragments = {}
+
+		for _, fragment in fragments do
+			if should_room_replace_wall(buildKind, fragment.Size, fragment.CFrame, hitPart) then
+				local sliced = subtract_wall_overlap(fragment.Size, fragment.CFrame, hitPart.Size, hitPart.CFrame)
+				for _, slicedPart in sliced do
+					table.insert(nextFragments, slicedPart)
+				end
+			else
+				table.insert(nextFragments, fragment)
+			end
+		end
+
+		fragments = nextFragments
+	end
+
+	return fragments
+end
+
+local function resolve_existing_wall_fragments(size: Vector3, cframe: CFrame, buildKind: string): ({[BasePart]: {{Size: Vector3, CFrame: CFrame}}}, {[BasePart]: boolean})
+	local overlaps = collect_overlapping_build_parts(size, cframe)
+	local replacementsByPart = {}
+	local partsToDestroy = {}
+
+	for _, hitPart in overlaps do
+		if should_room_replace_wall(buildKind, size, cframe, hitPart) then
+			local sliced = subtract_wall_overlap(hitPart.Size, hitPart.CFrame, size, cframe)
+			replacementsByPart[hitPart] = sliced
+			partsToDestroy[hitPart] = true
+		end
+	end
+
+	return replacementsByPart, partsToDestroy
+end
+
+collect_overlapping_build_parts = function(size: Vector3, cframe: CFrame): {BasePart}
 	local folder = get_build_folder()
 	if not folder then
 		return {}
@@ -194,7 +294,7 @@ local function apply_extra_attributes(part: BasePart, extraAttributes: {[string]
 	end
 end
 
-local function create_build_part(size: Vector3, cframe: CFrame, color: Color3?, buildKind: string?, lightRange: number?, lightBrightness: number?, extraAttributes: {[string]: any}?, allowRoomReplacement: boolean?): BasePart?
+local function create_build_part(size: Vector3, cframe: CFrame, color: Color3?, buildKind: string?, lightRange: number?, lightBrightness: number?, extraAttributes: {[string]: any}?, allowRoomReplacement: boolean?, preferNewWall: boolean?): BasePart?
 	local folder = get_build_folder()
 	if not folder then
 		return nil
@@ -202,25 +302,68 @@ local function create_build_part(size: Vector3, cframe: CFrame, color: Color3?, 
 
 	local finalSize = sanitize_size(size)
 	local finalKind = buildKind or "Part"
+	local fragments = {{Size = finalSize, CFrame = cframe}}
 
 	if allowRoomReplacement == true then
-		destroy_room_overlapping_walls(finalSize, cframe, finalKind)
+		if is_wall_like_kind(finalKind, finalSize) then
+			local shouldPreferNewWall = preferNewWall == true
+
+			if shouldPreferNewWall then
+				local replacementsByPart, partsToDestroy = resolve_existing_wall_fragments(finalSize, cframe, finalKind)
+				for partToDestroy in partsToDestroy do
+					local sourceColor = partToDestroy.Color
+					local sourceKind = get_build_kind(partToDestroy)
+					local sourceAttributes = partToDestroy:GetAttributes()
+					partToDestroy:Destroy()
+
+					local replacements = replacementsByPart[partToDestroy]
+					if replacements then
+						for _, replacement in replacements do
+							local replacementPart = Instance.new("Part")
+							replacementPart.Name = "BuildPart"
+							replacementPart.Anchored = true
+							replacementPart.CanCollide = true
+							replacementPart.CanTouch = true
+							replacementPart.CanQuery = true
+							replacementPart.Size = sanitize_size(replacement.Size)
+							replacementPart.CFrame = replacement.CFrame
+							apply_part_visuals(replacementPart, sourceColor, sourceKind, nil, nil)
+							for attributeName, attributeValue in sourceAttributes do
+								replacementPart:SetAttribute(attributeName, attributeValue)
+							end
+							replacementPart.Parent = folder
+						end
+					end
+				end
+			else
+				fragments = resolve_room_wall_fragments(finalSize, cframe, finalKind)
+			end
+		else
+			destroy_room_overlapping_walls(finalSize, cframe, finalKind)
+		end
 	end
 
-	local part = Instance.new("Part")
-	part.Name = "BuildPart"
-	part.Anchored = true
-	part.CanCollide = true
-	part.CanTouch = true
-	part.CanQuery = true
-	part.Size = finalSize
-	part.CFrame = cframe
+	local firstPart = nil
+	for _, fragment in fragments do
+		local part = Instance.new("Part")
+		part.Name = "BuildPart"
+		part.Anchored = true
+		part.CanCollide = true
+		part.CanTouch = true
+		part.CanQuery = true
+		part.Size = sanitize_size(fragment.Size)
+		part.CFrame = fragment.CFrame
 
-	apply_part_visuals(part, color, finalKind, lightRange, lightBrightness)
-	apply_extra_attributes(part, extraAttributes)
+		apply_part_visuals(part, color, finalKind, lightRange, lightBrightness)
+		apply_extra_attributes(part, extraAttributes)
 
-	part.Parent = folder
-	return part
+		part.Parent = folder
+		if firstPart == nil then
+			firstPart = part
+		end
+	end
+
+	return firstPart
 end
 
 local function update_build_part(part: BasePart, size: Vector3?, cframe: CFrame?, color: Color3?, lightRange: number?, lightBrightness: number?): ()
@@ -287,7 +430,7 @@ function MasterBuildManager.process_request(player: Player, payload: any): ()
 		local lightRange = typeof(payload.LightRange) == "number" and payload.LightRange or nil
 		local lightBrightness = typeof(payload.LightBrightness) == "number" and payload.LightBrightness or nil
 
-		create_build_part(payload.Size, payload.CFrame, color, buildKind, lightRange, lightBrightness, nil, false)
+		create_build_part(payload.Size, payload.CFrame, color, buildKind, lightRange, lightBrightness, nil, false, false)
 		return
 	end
 
@@ -298,11 +441,22 @@ function MasterBuildManager.process_request(player: Player, payload: any): ()
 
 		local color = typeof(payload.Color) == "Color3" and payload.Color or nil
 		local roomId = typeof(payload.RoomId) == "string" and payload.RoomId or nil
+		local roomHasDoors = typeof(payload.Doors) == "table" and #payload.Doors > 0
 
 		for _, partData in payload.Parts do
 			if typeof(partData) == "table"
 				and typeof(partData.Size) == "Vector3"
 				and typeof(partData.CFrame) == "CFrame" then
+				local extraAttributes = {}
+				if roomId then
+					extraAttributes.RoomId = roomId
+				end
+				if typeof(partData.ExtraAttributes) == "table" then
+					for attributeName, attributeValue in partData.ExtraAttributes do
+						extraAttributes[attributeName] = attributeValue
+					end
+				end
+
 				create_build_part(
 					partData.Size,
 					partData.CFrame,
@@ -310,8 +464,9 @@ function MasterBuildManager.process_request(player: Player, payload: any): ()
 					typeof(partData.BuildKind) == "string" and partData.BuildKind or nil,
 					nil,
 					nil,
-					roomId and {RoomId = roomId} or nil,
-					true
+					next(extraAttributes) and extraAttributes or nil,
+					true,
+					roomHasDoors
 				)
 			end
 		end
