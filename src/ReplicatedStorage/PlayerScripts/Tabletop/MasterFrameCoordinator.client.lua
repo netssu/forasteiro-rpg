@@ -5,6 +5,8 @@ local Players: Players = game:GetService("Players")
 local GUI_NAME: string = "MasterGui"
 local ACTIVE_BUTTON_COLOR: Color3 = Color3.fromRGB(255, 208, 74)
 local INACTIVE_BUTTON_COLOR: Color3 = Color3.fromRGB(34, 36, 44)
+local TOPBAR_COLLAPSED_POSITION: UDim2 = UDim2.fromOffset(12, 12)
+local TOPBAR_COLLAPSED_ANCHOR: Vector2 = Vector2.new(0, 0)
 
 local BUTTON_TO_FRAME = {
 	EnvironmentToggleButton = "EnvironmentWindow",
@@ -49,6 +51,51 @@ local function close_except(frames: {[string]: GuiObject?}, keepName: string?): 
 	end
 end
 
+local function has_any_frame_open(frames: {[string]: GuiObject?}): boolean
+	for _, frame in frames do
+		if frame and frame.Visible then
+			return true
+		end
+	end
+
+	return false
+end
+
+local function refresh_topbar_layout(gui: ScreenGui): ()
+	local topBar = gui:FindFirstChild("TopBar")
+	if not topBar or not topBar:IsA("Frame") then
+		return
+	end
+
+	if topBar:GetAttribute("NormalPositionX") == nil then
+		topBar:SetAttribute("NormalPositionX", topBar.Position.X.Scale)
+		topBar:SetAttribute("NormalPositionXOffset", topBar.Position.X.Offset)
+		topBar:SetAttribute("NormalPositionY", topBar.Position.Y.Scale)
+		topBar:SetAttribute("NormalPositionYOffset", topBar.Position.Y.Offset)
+		topBar:SetAttribute("NormalAnchorX", topBar.AnchorPoint.X)
+		topBar:SetAttribute("NormalAnchorY", topBar.AnchorPoint.Y)
+	end
+
+	local frames = get_frames(gui)
+	local hasOpenFrame = has_any_frame_open(frames)
+
+	if hasOpenFrame then
+		topBar.AnchorPoint = Vector2.new(
+			topBar:GetAttribute("NormalAnchorX") or 0,
+			topBar:GetAttribute("NormalAnchorY") or 0
+		)
+		topBar.Position = UDim2.new(
+			topBar:GetAttribute("NormalPositionX") or 0,
+			topBar:GetAttribute("NormalPositionXOffset") or 0,
+			topBar:GetAttribute("NormalPositionY") or 0,
+			topBar:GetAttribute("NormalPositionYOffset") or 0
+		)
+	else
+		topBar.AnchorPoint = TOPBAR_COLLAPSED_ANCHOR
+		topBar.Position = TOPBAR_COLLAPSED_POSITION
+	end
+end
+
 local function refresh_topbar_button_states(gui: ScreenGui): ()
 	local topBar = gui:FindFirstChild("TopBar")
 	if not topBar then
@@ -64,6 +111,8 @@ local function refresh_topbar_button_states(gui: ScreenGui): ()
 			button.BackgroundColor3 = (frame and frame.Visible) and ACTIVE_BUTTON_COLOR or INACTIVE_BUTTON_COLOR
 		end
 	end
+
+	refresh_topbar_layout(gui)
 end
 
 local function wire_gui(gui: ScreenGui): ()
@@ -94,6 +143,18 @@ local function wire_gui(gui: ScreenGui): ()
 
 					refresh_topbar_button_states(currentGui)
 				end)
+			end)
+		end
+	end
+
+	for _, frame in get_frames(gui) do
+		if frame and not frame:GetAttribute("MasterFrameVisibleBound") then
+			frame:SetAttribute("MasterFrameVisibleBound", true)
+			frame:GetPropertyChangedSignal("Visible"):Connect(function()
+				local currentGui = get_master_gui()
+				if currentGui then
+					refresh_topbar_button_states(currentGui)
+				end
 			end)
 		end
 	end
