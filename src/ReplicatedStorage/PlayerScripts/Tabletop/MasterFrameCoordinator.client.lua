@@ -11,6 +11,7 @@ local BUTTON_TO_FRAME = {
 	BuildToggleButton = "BuildSidebar",
 	RoomToggleButton = "RoomSidebar",
 	NpcToggleButton = "NpcSidebar",
+	TerrainToggleButton = "TerrainWindow",
 }
 
 ------------------//VARIABLES
@@ -34,6 +35,7 @@ local function get_frames(gui: ScreenGui): {[string]: GuiObject?}
 		BuildSidebar = gui:FindFirstChild("BuildSidebar"),
 		RoomSidebar = gui:FindFirstChild("RoomSidebar"),
 		NpcSidebar = gui:FindFirstChild("NpcSidebar"),
+		TerrainWindow = gui:FindFirstChild("TerrainWindow"),
 	}
 end
 

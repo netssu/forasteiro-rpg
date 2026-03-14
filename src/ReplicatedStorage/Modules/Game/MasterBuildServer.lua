@@ -22,10 +22,10 @@ local TERRAIN_BIOMES = {
 	Arctic = {Top = Enum.Material.Snow, Under = Enum.Material.Snow, BaseHeight = 24, Amplitude = 12, NoiseScale = 0.02, Ridge = 8, WaterLevel = nil, TopThickness = 6},
 	Dunes = {Top = Enum.Material.Sand, Under = Enum.Material.Sand, BaseHeight = 20, Amplitude = 9, NoiseScale = 0.024, Ridge = 9, WaterLevel = nil, TopThickness = 5},
 	Canyons = {Top = Enum.Material.Slate, Under = Enum.Material.Rock, BaseHeight = 30, Amplitude = 18, NoiseScale = 0.012, Ridge = 16, WaterLevel = nil, TopThickness = 4},
-	Lavascape = {Top = Enum.Material.Basalt, Under = Enum.Material.Basalt, BaseHeight = 26, Amplitude = 18, NoiseScale = 0.014, Ridge = 18, WaterLevel = nil, TopThickness = 5},
+	Lavascape = {Top = Enum.Material.Basalt, Under = Enum.Material.Basalt, BaseHeight = 32, Amplitude = 24, NoiseScale = 0.012, Ridge = 26, WaterLevel = nil, TopThickness = 6, LavaLevel = 21},
 	Water = {Top = Enum.Material.Sand, Under = Enum.Material.Rock, BaseHeight = 8, Amplitude = 5, NoiseScale = 0.03, Ridge = 2, WaterLevel = 18, TopThickness = 4},
 	Mountains = {Top = Enum.Material.Rock, Under = Enum.Material.Slate, BaseHeight = 34, Amplitude = 20, NoiseScale = 0.013, Ridge = 16, WaterLevel = nil, TopThickness = 4},
-	Hills = {Top = Enum.Material.Grass, Under = Enum.Material.Grass, BaseHeight = 20, Amplitude = 10, NoiseScale = 0.022, Ridge = 6, WaterLevel = nil, TopThickness = 6},
+	Hills = {Top = Enum.Material.Ground, Under = Enum.Material.Ground, BaseHeight = 18, Amplitude = 8, NoiseScale = 0.021, Ridge = 5, WaterLevel = nil, TopThickness = 5},
 	Plains = {Top = Enum.Material.Grass, Under = Enum.Material.Grass, BaseHeight = 16, Amplitude = 4, NoiseScale = 0.026, Ridge = 2, WaterLevel = nil, TopThickness = 6},
 	Marsh = {Top = Enum.Material.Grass, Under = Enum.Material.Mud, BaseHeight = 12, Amplitude = 5, NoiseScale = 0.024, Ridge = 3, WaterLevel = 17, TopThickness = 5},
 }
@@ -339,7 +339,7 @@ local function apply_extra_attributes(part: BasePart, extraAttributes: {[string]
 end
 
 local function get_baseplate(): BasePart?
-	if cachedBaseplate and cachedBaseplate.Parent ~= nil then
+	if cachedBaseplate then
 		return cachedBaseplate
 	end
 
@@ -361,6 +361,7 @@ local function set_baseplate_enabled(enabled: boolean): ()
 
 	if enabled then
 		baseplate.Parent = cachedBaseplateParent or workspace
+		cachedBaseplateParent = baseplate.Parent
 		return
 	end
 
@@ -573,13 +574,21 @@ local function generate_biome_terrain(userId: number, center: Vector3, width: nu
 					localTopMaterial = Enum.Material.Grass
 				end
 			elseif biomeName == "Hills" then
-				if n1 > 0.35 and n3 > 0.25 then
-					localTopMaterial = Enum.Material.Grass
+				if n1 > 0.45 and n3 > 0.35 then
+					localTopMaterial = Enum.Material.Mud
+				elseif n2 < -0.5 then
+					localTopMaterial = Enum.Material.Rock
 				else
 					localTopMaterial = Enum.Material.Ground
 				end
 			elseif biomeName == "Lavascape" then
-				localTopMaterial = (ridge > 0.62) and Enum.Material.Basalt or Enum.Material.Rock
+				if ridge > 0.76 then
+					localTopMaterial = Enum.Material.Basalt
+				elseif n2 > 0.35 then
+					localTopMaterial = Enum.Material.Rock
+				else
+					localTopMaterial = Enum.Material.Slate
+				end
 			elseif biomeName == "Arctic" then
 				localTopMaterial = Enum.Material.Snow
 			end
@@ -590,6 +599,13 @@ local function generate_biome_terrain(userId: number, center: Vector3, width: nu
 				local waterHeight = biome.WaterLevel - height
 				if waterHeight > 1 then
 					terrain:FillBlock(CFrame.new(worldX, height + (waterHeight / 2), worldZ), Vector3.new(step, waterHeight, step), Enum.Material.Water)
+				end
+			end
+
+			if biome.LavaLevel and height < biome.LavaLevel then
+				local lavaHeight = biome.LavaLevel - height
+				if lavaHeight > 1 then
+					terrain:FillBlock(CFrame.new(worldX, height + (lavaHeight / 2), worldZ), Vector3.new(step, lavaHeight, step), Enum.Material.Lava)
 				end
 			end
 
