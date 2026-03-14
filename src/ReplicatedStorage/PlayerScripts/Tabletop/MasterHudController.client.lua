@@ -348,29 +348,29 @@ local function render_players_list(): ()
 		slashLabel.Parent = row
 
 		local maxBox = create_text_box(row, tostring(math.floor(charData.MaxHealth + 0.5)), UDim2.fromOffset(60, 24), UDim2.fromOffset(124, 58))
-		local applyButton = create_text_button(row, "Aplicar", UDim2.fromOffset(76, 24), UDim2.fromOffset(194, 58))
-		local lockButton = create_text_button(row, charData.ManualMovementLocked and "Desbloq." or "Bloquear", UDim2.fromOffset(92, 24), UDim2.fromOffset(278, 58))
-		local addTurnButton = create_text_button(row, "Add Turno", UDim2.fromOffset(94, 24), UDim2.fromOffset(378, 58))
+		local teleportToPlayerButton = create_text_button(row, "Ir até", UDim2.fromOffset(70, 24), UDim2.fromOffset(194, 58))
+		local lockButton = create_text_button(row, charData.ManualMovementLocked and "Desbloq." or "Bloquear", UDim2.fromOffset(92, 24), UDim2.fromOffset(272, 58))
+		local addTurnButton = create_text_button(row, "Add Turno", UDim2.fromOffset(94, 24), UDim2.fromOffset(372, 58))
 
 		local imageLabel = Instance.new("TextLabel")
 		imageLabel.BackgroundTransparency = 1
 		imageLabel.Position = UDim2.fromOffset(12, 92)
-		imageLabel.Size = UDim2.fromOffset(34, 24)
+		imageLabel.Size = UDim2.fromOffset(48, 24)
 		imageLabel.Font = Enum.Font.GothamBold
-		imageLabel.Text = "IMG"
+		imageLabel.Text = "IMAGEM"
 		imageLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 		imageLabel.TextSize = 12
 		imageLabel.Parent = row
 
-		local imageIdBox = create_text_box(row, get_character_image_id(charData.Character), UDim2.new(1, -220, 0, 24), UDim2.fromOffset(50, 92))
-		local applyImageButton = create_text_button(row, "Setar", UDim2.fromOffset(70, 24), UDim2.new(1, -162, 0, 92))
-		local teleportToPlayerButton = create_text_button(row, "Ir até", UDim2.fromOffset(70, 24), UDim2.new(1, -84, 0, 92))
+		local imageIdBox = create_text_box(row, get_character_image_id(charData.Character), UDim2.new(1, -70, 0, 24), UDim2.fromOffset(12, 120))
 
-		applyButton.MouseButton1Click:Connect(function()
+		local function sync_health_fields(): ()
 			local currentHealth = sanitize_number(currentBox.Text)
 			local maxHealth = sanitize_number(maxBox.Text)
 
 			if not currentHealth or not maxHealth then
+				currentBox.Text = tostring(math.floor(charData.CurrentHealth + 0.5))
+				maxBox.Text = tostring(math.floor(charData.MaxHealth + 0.5))
 				return
 			end
 
@@ -379,6 +379,14 @@ local function render_players_list(): ()
 				CurrentHealth = currentHealth,
 				MaxHealth = maxHealth,
 			})
+		end
+
+		currentBox.FocusLost:Connect(function()
+			sync_health_fields()
+		end)
+
+		maxBox.FocusLost:Connect(function()
+			sync_health_fields()
 		end)
 
 		lockButton.MouseButton1Click:Connect(function()
@@ -394,7 +402,7 @@ local function render_players_list(): ()
 			})
 		end)
 
-		applyImageButton.MouseButton1Click:Connect(function()
+		imageIdBox.FocusLost:Connect(function()
 			roleImageEvent:FireServer({
 				Character = charData.Character,
 				ImageId = imageIdBox.Text,
