@@ -16,6 +16,10 @@ local assetsFolder: Folder = ReplicatedStorage:WaitForChild("Assets")
 local remotesFolder: Folder = assetsFolder:WaitForChild("Remotes")
 local teamSelectEvent: RemoteEvent = remotesFolder:WaitForChild(TEAM_REMOTE_NAME)
 
+local modulesFolder: Folder = ReplicatedStorage:WaitForChild("Modules")
+local utilityFolder: Folder = modulesFolder:WaitForChild("Utility")
+local SquareTransition = require(utilityFolder:WaitForChild("SquareTransition"))
+
 local playerHud: ScreenGui? = nil
 local returnButton: TextButton? = nil
 local healthLabel: TextLabel? = nil
@@ -69,9 +73,32 @@ local function connect_buttons(): ()
 	buttonsConnected = true
 
 	returnButton.MouseButton1Click:Connect(function()
-		teamSelectEvent:FireServer({
-			Action = RETURN_TO_MENU_ACTION,
-		})
+		local container: GuiObject? = playerGui:FindFirstChild("BothUI")
+		if not container then
+			container = playerHud
+		end
+
+		if not container then
+			teamSelectEvent:FireServer({ Action = RETURN_TO_MENU_ACTION })
+			return
+		end
+
+		if playerHud then
+			playerHud.Enabled = false
+		end
+
+		local ok = pcall(function()
+			SquareTransition.play(container, {
+				tileSize = 100,
+				onFilled = function()
+					teamSelectEvent:FireServer({ Action = RETURN_TO_MENU_ACTION })
+				end,
+			})
+		end)
+
+		if not ok then
+			teamSelectEvent:FireServer({ Action = RETURN_TO_MENU_ACTION })
+		end
 	end)
 end
 
