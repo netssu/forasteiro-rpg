@@ -68,8 +68,8 @@ local function is_master(player: Player): boolean
 end
 
 local function get_player_label(player: Player): string
-	if player.DisplayName ~= player.Name then
-		return player.DisplayName .. " (@" .. player.Name .. ")"
+	if typeof(player.DisplayName) == "string" and player.DisplayName ~= "" then
+		return player.DisplayName
 	end
 
 	return player.Name

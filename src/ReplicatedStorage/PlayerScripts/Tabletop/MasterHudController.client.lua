@@ -310,8 +310,8 @@ local function render_players_list(): ()
 
 		local nameLabel = Instance.new("TextLabel")
 		nameLabel.BackgroundTransparency = 1
-		nameLabel.Position = UDim2.fromOffset(12, 8)
-		nameLabel.Size = UDim2.new(1, -220, 0, 18)
+		nameLabel.Position = UDim2.fromOffset(174, 8)
+		nameLabel.Size = UDim2.new(1, -186, 0, 18)
 		nameLabel.Font = Enum.Font.GothamBold
 		nameLabel.Text = charData.Label .. " [" .. (charData.RoleName ~= "" and charData.RoleName or "NPC") .. "]"
 		nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -321,8 +321,8 @@ local function render_players_list(): ()
 
 		local stateLabel = Instance.new("TextLabel")
 		stateLabel.BackgroundTransparency = 1
-		stateLabel.Position = UDim2.fromOffset(12, 28)
-		stateLabel.Size = UDim2.new(1, -24, 0, 14)
+		stateLabel.Position = UDim2.fromOffset(174, 28)
+		stateLabel.Size = UDim2.new(1, -186, 0, 14)
 		stateLabel.Font = Enum.Font.GothamMedium
 		stateLabel.Text = charData.MovementLocked and "Movimento: Travado" or "Movimento: Livre"
 		stateLabel.TextColor3 = charData.MovementLocked and Color3.fromRGB(255, 170, 170) or Color3.fromRGB(170, 255, 170)
@@ -332,7 +332,7 @@ local function render_players_list(): ()
 
 		local hpLabel = Instance.new("TextLabel")
 		hpLabel.BackgroundTransparency = 1
-		hpLabel.Position = UDim2.new(1, -200, 0, 8)
+		hpLabel.Position = UDim2.fromOffset(12, 8)
 		hpLabel.Size = UDim2.fromOffset(24, 18)
 		hpLabel.Font = Enum.Font.GothamBold
 		hpLabel.Text = "HP"
@@ -340,11 +340,11 @@ local function render_players_list(): ()
 		hpLabel.TextSize = 12
 		hpLabel.Parent = row
 
-		local currentBox = create_text_box(row, tostring(math.floor(charData.CurrentHealth + 0.5)), UDim2.fromOffset(52, 20), UDim2.new(1, -172, 0, 8))
+		local currentBox = create_text_box(row, tostring(math.floor(charData.CurrentHealth + 0.5)), UDim2.fromOffset(52, 20), UDim2.fromOffset(40, 8))
 
 		local slashLabel = Instance.new("TextLabel")
 		slashLabel.BackgroundTransparency = 1
-		slashLabel.Position = UDim2.new(1, -118, 0, 8)
+		slashLabel.Position = UDim2.fromOffset(96, 8)
 		slashLabel.Size = UDim2.fromOffset(14, 18)
 		slashLabel.Font = Enum.Font.GothamBold
 		slashLabel.Text = "/"
@@ -352,7 +352,7 @@ local function render_players_list(): ()
 		slashLabel.TextSize = 12
 		slashLabel.Parent = row
 
-		local maxBox = create_text_box(row, tostring(math.floor(charData.MaxHealth + 0.5)), UDim2.fromOffset(52, 20), UDim2.new(1, -98, 0, 8))
+		local maxBox = create_text_box(row, tostring(math.floor(charData.MaxHealth + 0.5)), UDim2.fromOffset(52, 20), UDim2.fromOffset(110, 8))
 		local teleportToPlayerButton = create_text_button(row, "Ir até", UDim2.new(0.32, -8, 0, 24), UDim2.fromOffset(12, 48))
 		local lockButton = create_text_button(row, charData.ManualMovementLocked and "Desbloq." or "Bloquear", UDim2.new(0.32, -8, 0, 24), UDim2.new(0.34, 0, 0, 48))
 		local addTurnButton = create_text_button(row, "Add Turno", UDim2.new(0.32, -8, 0, 24), UDim2.new(0.68, -4, 0, 48))

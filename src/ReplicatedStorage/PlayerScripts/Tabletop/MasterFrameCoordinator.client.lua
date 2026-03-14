@@ -3,6 +3,8 @@ local Players: Players = game:GetService("Players")
 
 ------------------//CONSTANTS
 local GUI_NAME: string = "MasterGui"
+local ACTIVE_BUTTON_COLOR: Color3 = Color3.fromRGB(255, 208, 74)
+local INACTIVE_BUTTON_COLOR: Color3 = Color3.fromRGB(34, 36, 44)
 
 local BUTTON_TO_FRAME = {
 	EnvironmentToggleButton = "EnvironmentWindow",
@@ -47,6 +49,23 @@ local function close_except(frames: {[string]: GuiObject?}, keepName: string?): 
 	end
 end
 
+local function refresh_topbar_button_states(gui: ScreenGui): ()
+	local topBar = gui:FindFirstChild("TopBar")
+	if not topBar then
+		return
+	end
+
+	local frames = get_frames(gui)
+
+	for buttonName, frameName in BUTTON_TO_FRAME do
+		local button = topBar:FindFirstChild(buttonName)
+		if button and button:IsA("TextButton") then
+			local frame = frames[frameName]
+			button.BackgroundColor3 = (frame and frame.Visible) and ACTIVE_BUTTON_COLOR or INACTIVE_BUTTON_COLOR
+		end
+	end
+end
+
 local function wire_gui(gui: ScreenGui): ()
 	local topBar = gui:FindFirstChild("TopBar")
 	if not topBar then
@@ -72,6 +91,8 @@ local function wire_gui(gui: ScreenGui): ()
 					if targetFrame and targetFrame.Visible then
 						close_except(frames, frameName)
 					end
+
+					refresh_topbar_button_states(currentGui)
 				end)
 			end)
 		end
@@ -88,8 +109,10 @@ local function wire_gui(gui: ScreenGui): ()
 			end
 
 			close_except(get_frames(currentGui), nil)
+			refresh_topbar_button_states(currentGui)
 		end)
 	end
+	refresh_topbar_button_states(gui)
 end
 
 ------------------//INIT
