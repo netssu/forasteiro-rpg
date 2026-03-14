@@ -1,12 +1,13 @@
 ------------------//SERVICES
 local Players: Players = game:GetService("Players")
+local TweenService: TweenService = game:GetService("TweenService")
 
 ------------------//CONSTANTS
 local GUI_NAME: string = "MasterGui"
 local ACTIVE_BUTTON_COLOR: Color3 = Color3.fromRGB(255, 208, 74)
 local INACTIVE_BUTTON_COLOR: Color3 = Color3.fromRGB(34, 36, 44)
-local TOPBAR_COLLAPSED_POSITION: UDim2 = UDim2.fromOffset(12, 12)
-local TOPBAR_COLLAPSED_ANCHOR: Vector2 = Vector2.new(0, 0)
+local TOPBAR_COLLAPSED_X: UDim = UDim.new(1, -12)
+local TOPBAR_TWEEN_INFO: TweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
 local BUTTON_TO_FRAME = {
 	EnvironmentToggleButton = "EnvironmentWindow",
@@ -21,6 +22,7 @@ local BUTTON_TO_FRAME = {
 ------------------//VARIABLES
 local player: Player = Players.LocalPlayer
 local playerGui: PlayerGui = player:WaitForChild("PlayerGui")
+local activeTopBarTween: Tween? = nil
 
 ------------------//FUNCTIONS
 local function get_master_gui(): ScreenGui?
@@ -72,28 +74,41 @@ local function refresh_topbar_layout(gui: ScreenGui): ()
 		topBar:SetAttribute("NormalPositionXOffset", topBar.Position.X.Offset)
 		topBar:SetAttribute("NormalPositionY", topBar.Position.Y.Scale)
 		topBar:SetAttribute("NormalPositionYOffset", topBar.Position.Y.Offset)
-		topBar:SetAttribute("NormalAnchorX", topBar.AnchorPoint.X)
-		topBar:SetAttribute("NormalAnchorY", topBar.AnchorPoint.Y)
 	end
 
 	local frames = get_frames(gui)
 	local hasOpenFrame = has_any_frame_open(frames)
+	local targetX = hasOpenFrame
+		and UDim.new(topBar:GetAttribute("NormalPositionX") or 0, topBar:GetAttribute("NormalPositionXOffset") or 0)
+		or TOPBAR_COLLAPSED_X
+	local targetPosition = UDim2.new(
+		targetX.Scale,
+		targetX.Offset,
+		topBar.Position.Y.Scale,
+		topBar.Position.Y.Offset
+	)
 
-	if hasOpenFrame then
-		topBar.AnchorPoint = Vector2.new(
-			topBar:GetAttribute("NormalAnchorX") or 0,
-			topBar:GetAttribute("NormalAnchorY") or 0
-		)
-		topBar.Position = UDim2.new(
-			topBar:GetAttribute("NormalPositionX") or 0,
-			topBar:GetAttribute("NormalPositionXOffset") or 0,
-			topBar:GetAttribute("NormalPositionY") or 0,
-			topBar:GetAttribute("NormalPositionYOffset") or 0
-		)
-	else
-		topBar.AnchorPoint = TOPBAR_COLLAPSED_ANCHOR
-		topBar.Position = TOPBAR_COLLAPSED_POSITION
+	if topBar.Position == targetPosition then
+		return
 	end
+
+	if activeTopBarTween then
+		activeTopBarTween:Cancel()
+		activeTopBarTween = nil
+	end
+
+	local tween = TweenService:Create(topBar, TOPBAR_TWEEN_INFO, {
+		Position = targetPosition,
+	})
+	activeTopBarTween = tween
+
+	tween.Completed:Connect(function()
+		if activeTopBarTween == tween then
+			activeTopBarTween = nil
+		end
+	end)
+
+	tween:Play()
 end
 
 local function refresh_topbar_button_states(gui: ScreenGui): ()
