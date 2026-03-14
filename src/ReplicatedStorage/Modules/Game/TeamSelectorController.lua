@@ -62,6 +62,10 @@ local function request_team_selection(teamName: string): ()
 
 	isSelectionTransitionInProgress = true
 
+	if teamGui then
+		teamGui.Enabled = false
+	end
+
 	task.spawn(function()
 		local container: GuiObject? = playerGui:FindFirstChild("BothUI")
 

@@ -43,6 +43,7 @@ local rainButton: TextButton? = nil
 local playersList: ScrollingFrame? = nil
 local orderList: ScrollingFrame? = nil
 local activeTurnLabel: TextLabel? = nil
+local turnModeButton: TextButton? = nil
 local customClockTimeBox: TextBox? = nil
 local applyClockTimeButton: TextButton? = nil
 
@@ -51,6 +52,7 @@ local cachedSnapshot = {
 	PresetName = "NeutralDay",
 	RainEnabled = false,
 	CombatStarted = false,
+	IsSharedTurnModeEnabled = false,
 	ActiveTurnIndex = 0,
 	Characters = {},
 	Order = {},
@@ -197,6 +199,7 @@ local function cache_gui_objects(): ()
 		playersList = nil
 		orderList = nil
 		activeTurnLabel = nil
+		turnModeButton = nil
 		customClockTimeBox = nil
 		applyClockTimeButton = nil
 		return
@@ -224,6 +227,8 @@ local function cache_gui_objects(): ()
 	playersList = playersBody and playersBody:FindFirstChild("PlayersList") or nil
 	orderList = combatBody and combatBody:FindFirstChild("OrderList") or nil
 	activeTurnLabel = combatBody and combatBody:FindFirstChild("ActiveTurnLabel") or nil
+
+	turnModeButton = combatBody and combatBody:FindFirstChild("TurnModeButton") :: TextButton?
 end
 
 local function update_gui_visibility(): ()
@@ -290,7 +295,7 @@ local function render_players_list(): ()
 		end
 
 		local row = Instance.new("Frame")
-		row.Size = UDim2.new(1, -8, 0, 118)
+		row.Size = UDim2.new(1, -8, 0, 148)
 		row.BackgroundColor3 = Color3.fromRGB(26, 28, 34)
 		row.BorderSizePixel = 0
 		row.Parent = playersList
@@ -359,6 +364,7 @@ local function render_players_list(): ()
 
 		local imageIdBox = create_text_box(row, get_character_image_id(charData.Character), UDim2.fromOffset(240, 24), UDim2.fromOffset(52, 82))
 		local applyImageButton = create_text_button(row, "Setar", UDim2.fromOffset(70, 24), UDim2.fromOffset(300, 82))
+		local teleportToPlayerButton = create_text_button(row, "Ir até", UDim2.fromOffset(70, 24), UDim2.fromOffset(378, 82))
 
 		applyButton.MouseButton1Click:Connect(function()
 			local currentHealth = sanitize_number(currentBox.Text)
@@ -392,6 +398,12 @@ local function render_players_list(): ()
 			roleImageEvent:FireServer({
 				Character = charData.Character,
 				ImageId = imageIdBox.Text,
+			})
+		end)
+
+		teleportToPlayerButton.MouseButton1Click:Connect(function()
+			fire_tabletop("TeleportMasterToCharacter", {
+				Character = charData.Character,
 			})
 		end)
 	end
@@ -484,6 +496,13 @@ local function update_status_labels(): ()
 		customClockTimeBox.Text = string.format("%.2f", cachedSnapshot.ClockTime)
 	end
 
+	if turnModeButton then
+		local isEnabled = cachedSnapshot.IsSharedTurnModeEnabled == true
+		turnModeButton.Text = isEnabled and "Turno em Grupo: ON" or "Turno em Grupo: OFF"
+		turnModeButton.BackgroundColor3 = isEnabled and Color3.fromRGB(255, 208, 74) or Color3.fromRGB(34, 36, 44)
+		turnModeButton.TextColor3 = isEnabled and Color3.fromRGB(18, 18, 18) or Color3.fromRGB(255, 255, 255)
+	end
+
 	if activeTurnLabel then
 		local currentText = "Turno atual: -"
 
@@ -549,6 +568,7 @@ local function connect_static_buttons(): ()
 
 	local environmentBody = environmentWindow and environmentWindow:FindFirstChild("Body") or nil
 	local combatBody = combatWindow and combatWindow:FindFirstChild("Body") or nil
+	local playersHeader = playersWindow and playersWindow:FindFirstChild("Header") or nil
 
 	local dawnButton = environmentBody and environmentBody:FindFirstChild("DawnButton") or nil
 	local dayButton = environmentBody and environmentBody:FindFirstChild("DayButton") or nil
@@ -563,6 +583,8 @@ local function connect_static_buttons(): ()
 	local nextTurnButton = combatBody and combatBody:FindFirstChild("NextTurnButton") or nil
 	local stopCombatButton = combatBody and combatBody:FindFirstChild("StopCombatButton") or nil
 	local clearOrderButton = combatBody and combatBody:FindFirstChild("ClearOrderButton") or nil
+	local turnModeBodyButton = combatBody and combatBody:FindFirstChild("TurnModeButton") or nil
+	local teleportAllHeaderButton = playersHeader and playersHeader:FindFirstChild("TeleportAllButton") or nil
 
 	local windowsToConnect = {
 		environmentWindow,
@@ -587,6 +609,8 @@ local function connect_static_buttons(): ()
 	connect_button_click(playersToggleButton, function()
 		toggle_window(playersWindow)
 	end)
+
+	connect_tabletop_button(teleportAllHeaderButton, "TeleportAllPlayersToMaster", nil)
 
 	connect_button_click(combatToggleButton, function()
 		toggle_window(combatWindow)
@@ -706,6 +730,12 @@ local function connect_static_buttons(): ()
 	for _, binding in combatBindings do
 		connect_tabletop_button(binding.Button, binding.Action, nil)
 	end
+
+	connect_button_click(turnModeBodyButton, function()
+		fire_tabletop("SetSharedTurnMode", {
+			Enabled = not (cachedSnapshot.IsSharedTurnModeEnabled == true),
+		})
+	end)
 end
 
 local function request_snapshot(): ()
