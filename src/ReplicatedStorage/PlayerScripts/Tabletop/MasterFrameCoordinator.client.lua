@@ -17,6 +17,7 @@ local BUTTON_TO_FRAME: {[string]: string} = {
 	RoomToggleButton = "RoomSidebar",
 	NpcToggleButton = "NpcSidebar",
 	TerrainToggleButton = "TerrainWindow",
+	PrefabToggleButton = "PrefabWindow",
 }
 
 ------------------//VARIABLES
@@ -50,6 +51,7 @@ local function get_frames(gui: ScreenGui): {[string]: GuiObject?}
 		RoomSidebar = find_gui_object(gui, "RoomSidebar"),
 		NpcSidebar = find_gui_object(gui, "NpcSidebar"),
 		TerrainWindow = find_gui_object(gui, "TerrainWindow"),
+		PrefabWindow = find_gui_object(gui, "PrefabWindow"),
 	}
 end
 
