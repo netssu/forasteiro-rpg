@@ -9,6 +9,7 @@ local GUI_NAME: string = "MasterGui"
 local REMOTE_NAME: string = "MasterBuildEvent"
 
 local TOP_BAR_NAME: string = "TopBar"
+local CLOSE_BUTTON_NAME: string = "CloseButton"
 
 local TERRAIN_TOGGLE_BUTTON_NAME: string = "TerrainToggleButton"
 local TERRAIN_WINDOW_NAME: string = "TerrainWindow"
@@ -134,6 +135,7 @@ local uiRefs = {
 	TopBar = nil,
 	Window = nil,
 	ToggleButton = nil,
+	CloseButton = nil,
 	BiomeChecks = {},
 	WidthButtons = {},
 	ColorButtons = {},
@@ -156,6 +158,14 @@ local boundGui: ScreenGui? = nil
 ------------------//FUNCTIONS
 local function is_master(): boolean
 	return player.Team ~= nil and player.Team.Name == MASTER_TEAM_NAME
+end
+
+local function find_descendant(parent: Instance, childName: string): Instance
+	local found = parent:FindFirstChild(childName, true)
+	if not found then
+		error("Objeto não encontrado: " .. childName)
+	end
+	return found
 end
 
 local function fire_build(action: string, payload: {[string]: any}): ()
@@ -200,7 +210,7 @@ local function refresh_selection_visuals(): ()
 	end
 
 	for widthValue, button in uiRefs.WidthButtons do
-		button.BackgroundColor3 = state.SelectedWidth == widthValue and Color3.fromRGB(69, 114, 84) or Color3.fromRGB(36, 40, 53)
+		button.BackgroundColor3 = state.SelectedWidth == widthValue and Color3.fromRGB(69, 114, 84) or Color3.fromRGB(34, 36, 44)
 	end
 
 	for index, button in uiRefs.ColorButtons do
@@ -263,43 +273,39 @@ end
 
 local function collect_ui_refs(masterGui: ScreenGui): ()
 	uiRefs.MasterGui = masterGui
-	uiRefs.TopBar = masterGui:WaitForChild(TOP_BAR_NAME)
-	uiRefs.Window = masterGui:WaitForChild(TERRAIN_WINDOW_NAME)
-	uiRefs.ToggleButton = uiRefs.TopBar:WaitForChild(TERRAIN_TOGGLE_BUTTON_NAME)
-
-	local biomeFrame: Frame = uiRefs.Window:WaitForChild(BIOME_FRAME_NAME)
-	local widthFrame: Frame = uiRefs.Window:WaitForChild(WIDTH_FRAME_NAME)
-	local materialFrame: Frame = uiRefs.Window:WaitForChild(MATERIAL_FRAME_NAME)
-	local colorsFrame: Frame = uiRefs.Window:WaitForChild(COLORS_FRAME_NAME)
+	uiRefs.TopBar = find_descendant(masterGui, TOP_BAR_NAME) :: Frame
+	uiRefs.Window = find_descendant(masterGui, TERRAIN_WINDOW_NAME) :: Frame
+	uiRefs.ToggleButton = find_descendant(uiRefs.TopBar, TERRAIN_TOGGLE_BUTTON_NAME) :: TextButton
+	uiRefs.CloseButton = uiRefs.Window:FindFirstChild(CLOSE_BUTTON_NAME, true)
 
 	uiRefs.BiomeChecks = {}
 	uiRefs.WidthButtons = {}
 	uiRefs.ColorButtons = {}
 
 	for _, biomeName in BIOME_ORDER do
-		uiRefs.BiomeChecks[biomeName] = biomeFrame:WaitForChild("BiomeCheck_" .. biomeName)
+		uiRefs.BiomeChecks[biomeName] = find_descendant(uiRefs.Window, "BiomeCheck_" .. biomeName) :: TextButton
 	end
 
 	for _, widthValue in WIDTH_OPTIONS do
-		uiRefs.WidthButtons[widthValue] = widthFrame:WaitForChild("WidthButton_" .. tostring(widthValue))
+		uiRefs.WidthButtons[widthValue] = find_descendant(uiRefs.Window, "WidthButton_" .. tostring(widthValue)) :: TextButton
 	end
 
 	for index = 1, #COLOR_PRESETS do
-		uiRefs.ColorButtons[index] = colorsFrame:WaitForChild("ColorButton_" .. tostring(index))
+		uiRefs.ColorButtons[index] = find_descendant(uiRefs.Window, "ColorButton_" .. tostring(index)) :: TextButton
 	end
 
-	uiRefs.BrightnessTrack = uiRefs.Window:WaitForChild(BRIGHTNESS_TRACK_NAME)
-	uiRefs.BrightnessFill = uiRefs.BrightnessTrack:WaitForChild(BRIGHTNESS_FILL_NAME)
-	uiRefs.BrightnessValue = uiRefs.Window:WaitForChild(BRIGHTNESS_VALUE_LABEL_NAME)
+	uiRefs.BrightnessTrack = find_descendant(uiRefs.Window, BRIGHTNESS_TRACK_NAME) :: Frame
+	uiRefs.BrightnessFill = find_descendant(uiRefs.Window, BRIGHTNESS_FILL_NAME) :: Frame
+	uiRefs.BrightnessValue = find_descendant(uiRefs.Window, BRIGHTNESS_VALUE_LABEL_NAME) :: TextLabel
 
-	uiRefs.MaterialLabel = materialFrame:WaitForChild(MATERIAL_LABEL_NAME)
-	uiRefs.MaterialPrevButton = materialFrame:WaitForChild(MATERIAL_PREV_BUTTON_NAME)
-	uiRefs.MaterialNextButton = materialFrame:WaitForChild(MATERIAL_NEXT_BUTTON_NAME)
+	uiRefs.MaterialLabel = find_descendant(uiRefs.Window, MATERIAL_LABEL_NAME) :: TextLabel
+	uiRefs.MaterialPrevButton = find_descendant(uiRefs.Window, MATERIAL_PREV_BUTTON_NAME) :: TextButton
+	uiRefs.MaterialNextButton = find_descendant(uiRefs.Window, MATERIAL_NEXT_BUTTON_NAME) :: TextButton
 
-	uiRefs.DetailToggle = uiRefs.Window:WaitForChild(DETAIL_TOGGLE_BUTTON_NAME)
-	uiRefs.BaseplateToggle = uiRefs.Window:WaitForChild(BASEPLATE_TOGGLE_BUTTON_NAME)
-	uiRefs.ApplyButton = uiRefs.Window:WaitForChild(APPLY_BUTTON_NAME)
-	uiRefs.ResetButton = uiRefs.Window:WaitForChild(RESET_BUTTON_NAME)
+	uiRefs.DetailToggle = find_descendant(uiRefs.Window, DETAIL_TOGGLE_BUTTON_NAME) :: TextButton
+	uiRefs.BaseplateToggle = find_descendant(uiRefs.Window, BASEPLATE_TOGGLE_BUTTON_NAME) :: TextButton
+	uiRefs.ApplyButton = find_descendant(uiRefs.Window, APPLY_BUTTON_NAME) :: TextButton
+	uiRefs.ResetButton = find_descendant(uiRefs.Window, RESET_BUTTON_NAME) :: TextButton
 end
 
 local function connect_biome_buttons(): ()
@@ -385,6 +391,14 @@ local function connect_main_buttons(): ()
 			end
 
 			uiRefs.Window.Visible = not uiRefs.Window.Visible
+		end)
+	end
+
+	if uiRefs.CloseButton and uiRefs.CloseButton:IsA("TextButton") then
+		uiRefs.CloseButton.MouseButton1Click:Connect(function()
+			if uiRefs.Window then
+				uiRefs.Window.Visible = false
+			end
 		end)
 	end
 
