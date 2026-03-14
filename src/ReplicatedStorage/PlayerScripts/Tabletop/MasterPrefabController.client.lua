@@ -9,6 +9,7 @@ local WINDOW_NAME: string = "PrefabWindow"
 local TOGGLE_NAME: string = "PrefabToggleButton"
 local REMOTE_NAME: string = "MasterBuildEvent"
 local PREFAB_FOLDER_NAME: string = "Prefrab"
+local BUILD_FOLDER_NAME: string = "TabletopBuildParts"
 
 local HOLD_TO_SPRAY_SECONDS: number = 2
 local FREQUENCY_MIN: number = 1
@@ -37,11 +38,13 @@ local prefabRoot: Folder = ReplicatedStorage:WaitForChild(PREFAB_FOLDER_NAME)
 local currentCategory: string? = nil
 local currentPrefabName: string? = nil
 local placeModeEnabled: boolean = false
+local deleteModeEnabled: boolean = false
 local randomScaleEnabled: boolean = false
 local randomRotationEnabled: boolean = false
 local frequencyPerSecond: number = 2
 
 local activeGui: ScreenGui? = nil
+local selectedDeleteTarget: Instance? = nil
 local mouseDownAt: number? = nil
 local sprayActive: boolean = false
 
@@ -171,14 +174,70 @@ local function sanitize_scale_range(window: Frame): (number, number)
 	return minValue, maxValue
 end
 
+local function is_valid_delete_target(inst: Instance?): boolean
+	if not inst then
+		return false
+	end
+
+	if inst:IsA("BasePart") then
+		return inst:GetAttribute("IsTabletopBuildPart") == true and inst:GetAttribute("BuildKind") == "Prefab"
+	end
+
+	if inst:IsA("Model") then
+		for _, descendant in inst:GetDescendants() do
+			if descendant:IsA("BasePart") and descendant:GetAttribute("IsTabletopBuildPart") == true and descendant:GetAttribute("BuildKind") == "Prefab" then
+				return true
+			end
+		end
+	end
+
+	return false
+end
+
+local function resolve_target_from_mouse(): Instance?
+	local target = mouse.Target
+	if not target then
+		return nil
+	end
+
+	if target:GetAttribute("IsTabletopBuildPart") ~= true or target:GetAttribute("BuildKind") ~= "Prefab" then
+		return nil
+	end
+
+	local buildFolder = workspace:FindFirstChild(BUILD_FOLDER_NAME)
+	if not buildFolder then
+		return target
+	end
+
+	local modelAncestor = target:FindFirstAncestorOfClass("Model")
+	if modelAncestor and modelAncestor.Parent == buildFolder then
+		return modelAncestor
+	end
+
+	return target
+end
+
 local function refresh_selected_label(window: Frame): ()
 	local body = window:FindFirstChild("Body")
-	local selectedLabel = body and body:FindFirstChild("SelectedLabel")
+	if not body then
+		return
+	end
+
+	local selectedLabel = body:FindFirstChild("SelectedLabel")
 	if selectedLabel and selectedLabel:IsA("TextLabel") then
 		if currentCategory and currentPrefabName then
 			selectedLabel.Text = string.format("Selecionado: %s/%s", currentCategory, currentPrefabName)
 		else
 			selectedLabel.Text = "Selecionado: nenhum"
+		end
+	end
+
+	local deleteSelectedLabel = body:FindFirstChild("DeleteSelectedLabel")
+	if deleteSelectedLabel and deleteSelectedLabel:IsA("TextLabel") then
+		if selectedDeleteTarget and is_valid_delete_target(selectedDeleteTarget) then
+			deleteSelectedLabel.Text = "Para apagar: " .. selectedDeleteTarget.Name
+		else
+			deleteSelectedLabel.Text = "Para apagar: nenhum"
 		end
 	end
 end
@@ -193,6 +252,12 @@ local function refresh_toggles(window: Frame): ()
 	if placeToggle and placeToggle:IsA("TextButton") then
 		placeToggle.Text = placeModeEnabled and "Modo colocar: ON" or "Modo colocar: OFF"
 		placeToggle.BackgroundColor3 = placeModeEnabled and Color3.fromRGB(69, 114, 84) or Color3.fromRGB(34, 36, 44)
+	end
+
+	local deleteModeButton = body:FindFirstChild("DeleteModeButton")
+	if deleteModeButton and deleteModeButton:IsA("TextButton") then
+		deleteModeButton.Text = deleteModeEnabled and "Modo apagar: ON" or "Modo apagar: OFF"
+		deleteModeButton.BackgroundColor3 = deleteModeEnabled and Color3.fromRGB(114, 69, 69) or Color3.fromRGB(34, 36, 44)
 	end
 
 	local randomScaleButton = body:FindFirstChild("RandomScaleButton")
@@ -376,7 +441,7 @@ local function populate_categories(window: Frame): ()
 end
 
 local function try_place_prefab(): ()
-	if not placeModeEnabled or not currentCategory or not currentPrefabName or not activeGui then
+	if not placeModeEnabled or deleteModeEnabled or not currentCategory or not currentPrefabName or not activeGui then
 		return
 	end
 
@@ -412,6 +477,53 @@ local function try_place_prefab(): ()
 	})
 end
 
+local function select_target_to_delete(): ()
+	if not deleteModeEnabled or not activeGui then
+		return
+	end
+
+	local window = activeGui:FindFirstChild(WINDOW_NAME)
+	if not window or not window:IsA("Frame") or not window.Visible then
+		return
+	end
+
+	selectedDeleteTarget = resolve_target_from_mouse()
+	refresh_selected_label(window)
+end
+
+local function delete_selected_target(): ()
+	if not selectedDeleteTarget or not is_valid_delete_target(selectedDeleteTarget) then
+		return
+	end
+
+	masterBuildEvent:FireServer({
+		Action = "DeletePrefabTarget",
+		Target = selectedDeleteTarget,
+	})
+
+	selectedDeleteTarget = nil
+	if activeGui then
+		local window = activeGui:FindFirstChild(WINDOW_NAME)
+		if window and window:IsA("Frame") then
+			refresh_selected_label(window)
+		end
+	end
+end
+
+local function delete_all_prefabs(): ()
+	masterBuildEvent:FireServer({
+		Action = "DeleteAllPrefabs",
+	})
+
+	selectedDeleteTarget = nil
+	if activeGui then
+		local window = activeGui:FindFirstChild(WINDOW_NAME)
+		if window and window:IsA("Frame") then
+			refresh_selected_label(window)
+		end
+	end
+end
+
 local function start_spray_loop(): ()
 	if sprayActive then
 		return
@@ -442,6 +554,9 @@ local function wire_window_controls(gui: ScreenGui, window: Frame): ()
 	local closeButton = header and header:FindFirstChild("CloseButton")
 	local body = window:FindFirstChild("Body")
 	local placeToggle = body and body:FindFirstChild("PlaceToggleButton")
+	local deleteModeButton = body and body:FindFirstChild("DeleteModeButton")
+	local deleteSelectedButton = body and body:FindFirstChild("DeleteSelectedButton")
+	local deleteAllButton = body and body:FindFirstChild("DeleteAllButton")
 	local randomScaleButton = body and body:FindFirstChild("RandomScaleButton")
 	local randomRotationButton = body and body:FindFirstChild("RandomRotationButton")
 	local frequencyTrack = body and body:FindFirstChild("FrequencyTrack")
@@ -473,8 +588,32 @@ local function wire_window_controls(gui: ScreenGui, window: Frame): ()
 		placeToggle:SetAttribute("PrefabBound", true)
 		placeToggle.MouseButton1Click:Connect(function()
 			placeModeEnabled = not placeModeEnabled
+			if placeModeEnabled then
+				deleteModeEnabled = false
+			end
 			refresh_toggles(window)
 		end)
+	end
+
+	if deleteModeButton and deleteModeButton:IsA("TextButton") and not deleteModeButton:GetAttribute("PrefabBound") then
+		deleteModeButton:SetAttribute("PrefabBound", true)
+		deleteModeButton.MouseButton1Click:Connect(function()
+			deleteModeEnabled = not deleteModeEnabled
+			if deleteModeEnabled then
+				placeModeEnabled = false
+			end
+			refresh_toggles(window)
+		end)
+	end
+
+	if deleteSelectedButton and deleteSelectedButton:IsA("TextButton") and not deleteSelectedButton:GetAttribute("PrefabBound") then
+		deleteSelectedButton:SetAttribute("PrefabBound", true)
+		deleteSelectedButton.MouseButton1Click:Connect(delete_selected_target)
+	end
+
+	if deleteAllButton and deleteAllButton:IsA("TextButton") and not deleteAllButton:GetAttribute("PrefabBound") then
+		deleteAllButton:SetAttribute("PrefabBound", true)
+		deleteAllButton.MouseButton1Click:Connect(delete_all_prefabs)
 	end
 
 	if randomScaleButton and randomScaleButton:IsA("TextButton") and not randomScaleButton:GetAttribute("PrefabBound") then
@@ -563,16 +702,24 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		return
 	end
 
-	mouseDownAt = os.clock()
-	task.delay(HOLD_TO_SPRAY_SECONDS, function()
-		if not mouseDownAt then
-			return
-		end
+	if deleteModeEnabled then
+		select_target_to_delete()
+		return
+	end
 
-		if os.clock() - mouseDownAt >= HOLD_TO_SPRAY_SECONDS then
-			start_spray_loop()
-		end
-	end)
+	if placeModeEnabled then
+		try_place_prefab()
+		mouseDownAt = os.clock()
+		task.delay(HOLD_TO_SPRAY_SECONDS, function()
+			if not mouseDownAt then
+				return
+			end
+
+			if os.clock() - mouseDownAt >= HOLD_TO_SPRAY_SECONDS then
+				start_spray_loop()
+			end
+		end)
+	end
 end)
 
 UserInputService.InputEnded:Connect(function(input, _gameProcessed)
@@ -580,15 +727,9 @@ UserInputService.InputEnded:Connect(function(input, _gameProcessed)
 		return
 	end
 
-	local pressedAt = mouseDownAt
 	mouseDownAt = nil
 
 	if sprayActive then
 		stop_spray_loop()
-		return
-	end
-
-	if pressedAt and (os.clock() - pressedAt) < HOLD_TO_SPRAY_SECONDS then
-		try_place_prefab()
 	end
 end)

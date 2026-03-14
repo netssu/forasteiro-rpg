@@ -66,6 +66,74 @@ local function is_valid_build_part(inst: Instance?): boolean
 	return folder ~= nil and inst.Parent == folder and inst:GetAttribute("IsTabletopBuildPart") == true
 end
 
+local function is_valid_prefab_target(inst: Instance?): boolean
+	if not inst then
+		return false
+	end
+
+	local folder = get_build_folder()
+	if not folder then
+		return false
+	end
+
+	if inst:IsA("BasePart") then
+		return inst:IsDescendantOf(folder)
+			and inst:GetAttribute("IsTabletopBuildPart") == true
+			and inst:GetAttribute("BuildKind") == "Prefab"
+	end
+
+	if inst:IsA("Model") then
+		if inst.Parent ~= folder then
+			return false
+		end
+
+		for _, descendant in inst:GetDescendants() do
+			if descendant:IsA("BasePart") and descendant:GetAttribute("IsTabletopBuildPart") == true and descendant:GetAttribute("BuildKind") == "Prefab" then
+				return true
+			end
+		end
+	end
+
+	return false
+end
+
+local function delete_prefab_target(inst: Instance): ()
+	if inst:IsA("Model") then
+		inst:Destroy()
+		return
+	end
+
+	if inst:IsA("BasePart") then
+		local modelAncestor = inst:FindFirstAncestorOfClass("Model")
+		local folder = get_build_folder()
+		if modelAncestor and folder and modelAncestor.Parent == folder then
+			modelAncestor:Destroy()
+			return
+		end
+
+		inst:Destroy()
+	end
+end
+
+local function delete_all_prefabs(): ()
+	local folder = get_build_folder()
+	if not folder then
+		return
+	end
+
+	for _, child in folder:GetChildren() do
+		if child:IsA("Model") then
+			if is_valid_prefab_target(child) then
+				child:Destroy()
+			end
+		elseif child:IsA("BasePart") then
+			if is_valid_prefab_target(child) then
+				child:Destroy()
+			end
+		end
+	end
+end
+
 local function sanitize_size(size: Vector3): Vector3
 	return Vector3.new(
 		math.clamp(size.X, MIN_PART_SIZE, MAX_PART_SIZE),
@@ -856,6 +924,21 @@ function MasterBuildManager.process_request(player: Player, payload: any): ()
 			delete_build_part(part)
 		end
 
+		return
+	end
+
+	if action == "DeletePrefabTarget" then
+		local target = payload.Target
+		if not is_valid_prefab_target(target) then
+			return
+		end
+
+		delete_prefab_target(target)
+		return
+	end
+
+	if action == "DeleteAllPrefabs" then
+		delete_all_prefabs()
 		return
 	end
 

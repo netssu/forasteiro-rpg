@@ -112,7 +112,7 @@ local function create_prefab_window(gui: ScreenGui): Frame
 	window.Name = WINDOW_NAME
 	window.BackgroundColor3 = Color3.fromRGB(16, 18, 24)
 	window.BorderSizePixel = 0
-	window.Size = UDim2.new(0.26, 0, 0.72, 0)
+	window.Size = UDim2.new(0.26, 0, 0.74, 0)
 	window.Position = UDim2.new(0.73, 0, 0.08, 0)
 	window.Visible = false
 	window.Parent = gui
@@ -154,52 +154,45 @@ local function create_prefab_window(gui: ScreenGui): Frame
 	categoryList.Name = "CategoryList"
 	categoryList.BackgroundColor3 = Color3.fromRGB(20, 22, 29)
 	categoryList.BorderSizePixel = 0
-	categoryList.Size = UDim2.new(0.33, 0, 0.6, 0)
+	categoryList.Size = UDim2.new(0.33, 0, 0.5, 0)
 	categoryList.ScrollBarThickness = 5
 	categoryList.CanvasSize = UDim2.new(0, 0, 1, 0)
 	categoryList.Parent = body
 	create_corner(categoryList, 0.06)
 	create_stroke(categoryList, 0.85)
-
-	local categoryLayout = Instance.new("UIListLayout")
-	categoryLayout.Padding = UDim.new(0.015, 0)
-	categoryLayout.Parent = categoryList
+	Instance.new("UIListLayout", categoryList).Padding = UDim.new(0.015, 0)
 
 	local itemList = Instance.new("ScrollingFrame")
 	itemList.Name = "ItemList"
 	itemList.BackgroundColor3 = Color3.fromRGB(20, 22, 29)
 	itemList.BorderSizePixel = 0
-	itemList.Size = UDim2.new(0.65, 0, 0.6, 0)
+	itemList.Size = UDim2.new(0.65, 0, 0.5, 0)
 	itemList.Position = UDim2.new(0.35, 0, 0, 0)
 	itemList.ScrollBarThickness = 5
 	itemList.CanvasSize = UDim2.new(0, 0, 1, 0)
 	itemList.Parent = body
 	create_corner(itemList, 0.05)
 	create_stroke(itemList, 0.85)
+	Instance.new("UIListLayout", itemList).Padding = UDim.new(0.02, 0)
 
-	local itemLayout = Instance.new("UIListLayout")
-	itemLayout.Padding = UDim.new(0.02, 0)
-	itemLayout.Parent = itemList
+	create_label(body, "SettingsLabel", "Configuração de colocação", UDim2.new(1, 0, 0.04, 0), UDim2.new(0, 0, 0.52, 0), 12, true)
+	create_button(body, "PlaceToggleButton", "Modo colocar: OFF", UDim2.new(0.48, 0, 0.055, 0), UDim2.new(0, 0, 0.57, 0))
+	create_button(body, "RandomRotationButton", "Rotação aleatória: OFF", UDim2.new(0.48, 0, 0.055, 0), UDim2.new(0.52, 0, 0.57, 0))
+	create_button(body, "RandomScaleButton", "Tamanho aleatório: OFF", UDim2.new(0.48, 0, 0.055, 0), UDim2.new(0, 0, 0.635, 0))
 
-	create_label(body, "SettingsLabel", "Configuração de colocação", UDim2.new(1, 0, 0.05, 0), UDim2.new(0, 0, 0.62, 0), 12, true)
+	create_label(body, "ScaleMinLabel", "Escala min", UDim2.new(0.16, 0, 0.05, 0), UDim2.new(0.52, 0, 0.63, 0), 11, false)
+	create_label(body, "ScaleMaxLabel", "Escala max", UDim2.new(0.16, 0, 0.05, 0), UDim2.new(0.76, 0, 0.63, 0), 11, false)
+	create_textbox(body, "ScaleMinBox", "0.8", UDim2.new(0.2, 0, 0.05, 0), UDim2.new(0.52, 0, 0.67, 0))
+	create_textbox(body, "ScaleMaxBox", "1.2", UDim2.new(0.2, 0, 0.05, 0), UDim2.new(0.76, 0, 0.67, 0))
 
-	create_button(body, "PlaceToggleButton", "Modo colocar: OFF", UDim2.new(0.48, 0, 0.06, 0), UDim2.new(0, 0, 0.68, 0))
-	create_button(body, "RandomRotationButton", "Rotação aleatória: OFF", UDim2.new(0.48, 0, 0.06, 0), UDim2.new(0.52, 0, 0.68, 0))
-	create_button(body, "RandomScaleButton", "Tamanho aleatório: OFF", UDim2.new(0.48, 0, 0.06, 0), UDim2.new(0, 0, 0.75, 0))
-
-	create_label(body, "ScaleMinLabel", "Escala min", UDim2.new(0.16, 0, 0.05, 0), UDim2.new(0.52, 0, 0.745, 0), 11, false)
-	create_label(body, "ScaleMaxLabel", "Escala max", UDim2.new(0.16, 0, 0.05, 0), UDim2.new(0.76, 0, 0.745, 0), 11, false)
-	create_textbox(body, "ScaleMinBox", "0.8", UDim2.new(0.2, 0, 0.055, 0), UDim2.new(0.52, 0, 0.79, 0))
-	create_textbox(body, "ScaleMaxBox", "1.2", UDim2.new(0.2, 0, 0.055, 0), UDim2.new(0.76, 0, 0.79, 0))
-
-	create_label(body, "FrequencyLabel", "Frequência (itens/seg) ao segurar 2s", UDim2.new(1, 0, 0.05, 0), UDim2.new(0, 0, 0.85, 0), 11, false)
+	create_label(body, "FrequencyLabel", "Frequência (itens/seg) ao segurar 2s", UDim2.new(1, 0, 0.05, 0), UDim2.new(0, 0, 0.74, 0), 11, false)
 
 	local freqTrack = Instance.new("Frame")
 	freqTrack.Name = "FrequencyTrack"
 	freqTrack.BackgroundColor3 = Color3.fromRGB(31, 34, 44)
 	freqTrack.BorderSizePixel = 0
-	freqTrack.Size = UDim2.new(0.78, 0, 0.026, 0)
-	freqTrack.Position = UDim2.new(0, 0, 0.91, 0)
+	freqTrack.Size = UDim2.new(0.78, 0, 0.024, 0)
+	freqTrack.Position = UDim2.new(0, 0, 0.79, 0)
 	freqTrack.Parent = body
 	create_corner(freqTrack, 0.5)
 	create_stroke(freqTrack, 0.88)
@@ -222,9 +215,16 @@ local function create_prefab_window(gui: ScreenGui): Frame
 	freqKnob.Parent = freqTrack
 	create_corner(freqKnob, 0.5)
 
-	create_label(body, "FrequencyValueLabel", "2.0/s", UDim2.new(0.2, 0, 0.05, 0), UDim2.new(0.8, 0, 0.895, 0), 11, true)
+	create_label(body, "FrequencyValueLabel", "2.0/s", UDim2.new(0.2, 0, 0.04, 0), UDim2.new(0.8, 0, 0.775, 0), 11, true)
 
-	create_label(body, "SelectedLabel", "Selecionado: nenhum", UDim2.new(1, 0, 0.05, 0), UDim2.new(0, 0, 0.95, 0), 12, false).TextColor3 = Color3.fromRGB(150, 190, 255)
+	create_label(body, "DeleteLabel", "Configuração de apagar", UDim2.new(1, 0, 0.04, 0), UDim2.new(0, 0, 0.83, 0), 12, true)
+	create_button(body, "DeleteModeButton", "Modo apagar: OFF", UDim2.new(0.48, 0, 0.055, 0), UDim2.new(0, 0, 0.88, 0))
+	create_button(body, "DeleteSelectedButton", "Apagar selecionado", UDim2.new(0.48, 0, 0.055, 0), UDim2.new(0.52, 0, 0.88, 0))
+	local deleteAllButton = create_button(body, "DeleteAllButton", "Apagar tudo (prefab)", UDim2.new(1, 0, 0.055, 0), UDim2.new(0, 0, 0.945, 0))
+	deleteAllButton.BackgroundColor3 = Color3.fromRGB(62, 34, 34)
+
+	create_label(body, "SelectedLabel", "Selecionado: nenhum", UDim2.new(1, 0, 0.04, 0), UDim2.new(0, 0, 1.005, 0), 11, false).TextColor3 = Color3.fromRGB(150, 190, 255)
+	create_label(body, "DeleteSelectedLabel", "Para apagar: nenhum", UDim2.new(1, 0, 0.04, 0), UDim2.new(0, 0, 1.045, 0), 11, false).TextColor3 = Color3.fromRGB(255, 170, 170)
 
 	return window
 end
