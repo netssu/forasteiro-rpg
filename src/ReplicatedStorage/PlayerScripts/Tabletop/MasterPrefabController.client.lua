@@ -562,8 +562,16 @@ local function wire_window_controls(gui: ScreenGui, window: Frame): ()
 	local frequencyTrack = body and body:FindFirstChild("FrequencyTrack")
 	local sliderDragging = false
 
-	if toggleButton and toggleButton:IsA("TextButton") and not toggleButton:GetAttribute("PrefabBound") then
-		toggleButton:SetAttribute("PrefabBound", true)
+	if window:GetAttribute("PrefabControlsBound") == true then
+		update_frequency_slider(window, (frequencyPerSecond - FREQUENCY_MIN) / (FREQUENCY_MAX - FREQUENCY_MIN))
+		refresh_toggles(window)
+		refresh_selected_label(window)
+		return
+	end
+
+	window:SetAttribute("PrefabControlsBound", true)
+
+	if toggleButton and toggleButton:IsA("TextButton") then
 		toggleButton.MouseButton1Click:Connect(function()
 			local willOpen = not window.Visible
 			if willOpen then
@@ -577,15 +585,13 @@ local function wire_window_controls(gui: ScreenGui, window: Frame): ()
 		end)
 	end
 
-	if closeButton and closeButton:IsA("TextButton") and not closeButton:GetAttribute("PrefabBound") then
-		closeButton:SetAttribute("PrefabBound", true)
+	if closeButton and closeButton:IsA("TextButton") then
 		closeButton.MouseButton1Click:Connect(function()
 			window.Visible = false
 		end)
 	end
 
-	if placeToggle and placeToggle:IsA("TextButton") and not placeToggle:GetAttribute("PrefabBound") then
-		placeToggle:SetAttribute("PrefabBound", true)
+	if placeToggle and placeToggle:IsA("TextButton") then
 		placeToggle.MouseButton1Click:Connect(function()
 			placeModeEnabled = not placeModeEnabled
 			if placeModeEnabled then
@@ -595,8 +601,7 @@ local function wire_window_controls(gui: ScreenGui, window: Frame): ()
 		end)
 	end
 
-	if deleteModeButton and deleteModeButton:IsA("TextButton") and not deleteModeButton:GetAttribute("PrefabBound") then
-		deleteModeButton:SetAttribute("PrefabBound", true)
+	if deleteModeButton and deleteModeButton:IsA("TextButton") then
 		deleteModeButton.MouseButton1Click:Connect(function()
 			deleteModeEnabled = not deleteModeEnabled
 			if deleteModeEnabled then
@@ -606,18 +611,15 @@ local function wire_window_controls(gui: ScreenGui, window: Frame): ()
 		end)
 	end
 
-	if deleteSelectedButton and deleteSelectedButton:IsA("TextButton") and not deleteSelectedButton:GetAttribute("PrefabBound") then
-		deleteSelectedButton:SetAttribute("PrefabBound", true)
+	if deleteSelectedButton and deleteSelectedButton:IsA("TextButton") then
 		deleteSelectedButton.MouseButton1Click:Connect(delete_selected_target)
 	end
 
-	if deleteAllButton and deleteAllButton:IsA("TextButton") and not deleteAllButton:GetAttribute("PrefabBound") then
-		deleteAllButton:SetAttribute("PrefabBound", true)
+	if deleteAllButton and deleteAllButton:IsA("TextButton") then
 		deleteAllButton.MouseButton1Click:Connect(delete_all_prefabs)
 	end
 
-	if randomScaleButton and randomScaleButton:IsA("TextButton") and not randomScaleButton:GetAttribute("PrefabBound") then
-		randomScaleButton:SetAttribute("PrefabBound", true)
+	if randomScaleButton and randomScaleButton:IsA("TextButton") then
 		randomScaleButton.MouseButton1Click:Connect(function()
 			randomScaleEnabled = not randomScaleEnabled
 			sanitize_scale_range(window)
@@ -625,17 +627,14 @@ local function wire_window_controls(gui: ScreenGui, window: Frame): ()
 		end)
 	end
 
-	if randomRotationButton and randomRotationButton:IsA("TextButton") and not randomRotationButton:GetAttribute("PrefabBound") then
-		randomRotationButton:SetAttribute("PrefabBound", true)
+	if randomRotationButton and randomRotationButton:IsA("TextButton") then
 		randomRotationButton.MouseButton1Click:Connect(function()
 			randomRotationEnabled = not randomRotationEnabled
 			refresh_toggles(window)
 		end)
 	end
 
-	if frequencyTrack and frequencyTrack:IsA("Frame") and not frequencyTrack:GetAttribute("PrefabBound") then
-		frequencyTrack:SetAttribute("PrefabBound", true)
-
+	if frequencyTrack and frequencyTrack:IsA("Frame") then
 		local function update_by_mouse_x(mouseX: number): ()
 			local pct = (mouseX - frequencyTrack.AbsolutePosition.X) / frequencyTrack.AbsoluteSize.X
 			update_frequency_slider(window, pct)
