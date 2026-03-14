@@ -6,10 +6,10 @@ local TweenService: TweenService = game:GetService("TweenService")
 local GUI_NAME: string = "MasterGui"
 local ACTIVE_BUTTON_COLOR: Color3 = Color3.fromRGB(255, 208, 74)
 local INACTIVE_BUTTON_COLOR: Color3 = Color3.fromRGB(34, 36, 44)
-local TOPBAR_VISIBLE_WIDTH_WHEN_COLLAPSED: number = 210
+local TOPBAR_COLLAPSED_X_SCALE: number = 0.937
 local TOPBAR_TWEEN_INFO: TweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
-local BUTTON_TO_FRAME = {
+local BUTTON_TO_FRAME: {[string]: string} = {
 	EnvironmentToggleButton = "EnvironmentWindow",
 	PlayersToggleButton = "PlayersWindow",
 	CombatToggleButton = "CombatWindow",
@@ -33,15 +33,23 @@ local function get_master_gui(): ScreenGui?
 	return nil
 end
 
+local function find_gui_object(parent: Instance, childName: string): GuiObject?
+	local child = parent:FindFirstChild(childName)
+	if child and child:IsA("GuiObject") then
+		return child
+	end
+	return nil
+end
+
 local function get_frames(gui: ScreenGui): {[string]: GuiObject?}
 	return {
-		EnvironmentWindow = gui:FindFirstChild("EnvironmentWindow"),
-		PlayersWindow = gui:FindFirstChild("PlayersWindow"),
-		CombatWindow = gui:FindFirstChild("CombatWindow"),
-		BuildSidebar = gui:FindFirstChild("BuildSidebar"),
-		RoomSidebar = gui:FindFirstChild("RoomSidebar"),
-		NpcSidebar = gui:FindFirstChild("NpcSidebar"),
-		TerrainWindow = gui:FindFirstChild("TerrainWindow"),
+		EnvironmentWindow = find_gui_object(gui, "EnvironmentWindow"),
+		PlayersWindow = find_gui_object(gui, "PlayersWindow"),
+		CombatWindow = find_gui_object(gui, "CombatWindow"),
+		BuildSidebar = find_gui_object(gui, "BuildSidebar"),
+		RoomSidebar = find_gui_object(gui, "RoomSidebar"),
+		NpcSidebar = find_gui_object(gui, "NpcSidebar"),
+		TerrainWindow = find_gui_object(gui, "TerrainWindow"),
 	}
 end
 
@@ -64,21 +72,24 @@ local function has_any_frame_open(frames: {[string]: GuiObject?}): boolean
 end
 
 local function cache_normal_position(guiObject: GuiObject): ()
-	if guiObject:GetAttribute("NormalPositionX") == nil then
-		guiObject:SetAttribute("NormalPositionX", guiObject.Position.X.Scale)
+	if guiObject:GetAttribute("NormalPositionXScale") == nil then
+		guiObject:SetAttribute("NormalPositionXScale", guiObject.Position.X.Scale)
 		guiObject:SetAttribute("NormalPositionXOffset", guiObject.Position.X.Offset)
-		guiObject:SetAttribute("NormalPositionY", guiObject.Position.Y.Scale)
+		guiObject:SetAttribute("NormalPositionYScale", guiObject.Position.Y.Scale)
 		guiObject:SetAttribute("NormalPositionYOffset", guiObject.Position.Y.Offset)
 	end
 end
 
-local function get_normal_x(guiObject: GuiObject): UDim
-	return UDim.new(guiObject:GetAttribute("NormalPositionX") or 0, guiObject:GetAttribute("NormalPositionXOffset") or 0)
+local function get_normal_position(guiObject: GuiObject): UDim2
+	return UDim2.new(
+		guiObject:GetAttribute("NormalPositionXScale") or 0,
+		guiObject:GetAttribute("NormalPositionXOffset") or 0,
+		guiObject:GetAttribute("NormalPositionYScale") or 0,
+		guiObject:GetAttribute("NormalPositionYOffset") or 0
+	)
 end
 
-local function play_horizontal_tween(guiObject: GuiObject, targetX: UDim): ()
-	local targetPosition = UDim2.new(targetX.Scale, targetX.Offset, guiObject.Position.Y.Scale, guiObject.Position.Y.Offset)
-
+local function play_horizontal_tween(guiObject: GuiObject, targetPosition: UDim2): ()
 	if guiObject.Position == targetPosition then
 		return
 	end
@@ -103,9 +114,21 @@ local function play_horizontal_tween(guiObject: GuiObject, targetX: UDim): ()
 	tween:Play()
 end
 
+local function get_collapsed_topbar_position(topBar: GuiObject): UDim2
+	local normalPosition = get_normal_position(topBar)
+
+	return UDim2.new(
+		TOPBAR_COLLAPSED_X_SCALE,
+		0,
+		normalPosition.Y.Scale,
+		normalPosition.Y.Offset
+	)
+end
+
+------------------//MAIN FUNCTIONS
 local function refresh_topbar_layout(gui: ScreenGui): ()
 	local topBar = gui:FindFirstChild("TopBar")
-	if not topBar or not topBar:IsA("Frame") then
+	if not topBar or not topBar:IsA("GuiObject") then
 		return
 	end
 
@@ -113,27 +136,30 @@ local function refresh_topbar_layout(gui: ScreenGui): ()
 
 	local frames = get_frames(gui)
 	local hasOpenFrame = has_any_frame_open(frames)
-	local normalTopBarX = get_normal_x(topBar)
-	local collapsedTopBarX = UDim.new(1, -TOPBAR_VISIBLE_WIDTH_WHEN_COLLAPSED)
-	local topBarTargetX = hasOpenFrame and normalTopBarX or collapsedTopBarX
 
-	play_horizontal_tween(topBar, topBarTargetX)
+	local normalTopBarPosition = get_normal_position(topBar)
+	local collapsedTopBarPosition = get_collapsed_topbar_position(topBar)
+	local topBarTargetPosition = hasOpenFrame and normalTopBarPosition or collapsedTopBarPosition
 
-	local deltaX = UDim.new(
-		collapsedTopBarX.Scale - normalTopBarX.Scale,
-		collapsedTopBarX.Offset - normalTopBarX.Offset
-	)
+	play_horizontal_tween(topBar, topBarTargetPosition)
+
+	local deltaScaleX = collapsedTopBarPosition.X.Scale - normalTopBarPosition.X.Scale
 
 	for _, frame in frames do
 		if frame then
 			cache_normal_position(frame)
 
-			local frameNormalX = get_normal_x(frame)
-			local frameTargetX = hasOpenFrame
-				and frameNormalX
-				or UDim.new(frameNormalX.Scale + deltaX.Scale, frameNormalX.Offset + deltaX.Offset)
+			local frameNormalPosition = get_normal_position(frame)
+			local frameTargetPosition = hasOpenFrame
+				and frameNormalPosition
+				or UDim2.new(
+					frameNormalPosition.X.Scale + deltaScaleX,
+					frameNormalPosition.X.Offset,
+					frameNormalPosition.Y.Scale,
+					frameNormalPosition.Y.Offset
+				)
 
-			play_horizontal_tween(frame, frameTargetX)
+			play_horizontal_tween(frame, frameTargetPosition)
 		end
 	end
 end
@@ -215,6 +241,7 @@ local function wire_gui(gui: ScreenGui): ()
 			refresh_topbar_button_states(currentGui)
 		end)
 	end
+
 	refresh_topbar_button_states(gui)
 end
 
