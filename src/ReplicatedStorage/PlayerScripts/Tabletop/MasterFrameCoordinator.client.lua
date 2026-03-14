@@ -6,7 +6,7 @@ local TweenService: TweenService = game:GetService("TweenService")
 local GUI_NAME: string = "MasterGui"
 local ACTIVE_BUTTON_COLOR: Color3 = Color3.fromRGB(255, 208, 74)
 local INACTIVE_BUTTON_COLOR: Color3 = Color3.fromRGB(34, 36, 44)
-local TOPBAR_COLLAPSED_X: UDim = UDim.new(1, -12)
+local TOPBAR_VISIBLE_WIDTH_WHEN_COLLAPSED: number = 210
 local TOPBAR_TWEEN_INFO: TweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
 local BUTTON_TO_FRAME = {
@@ -22,7 +22,7 @@ local BUTTON_TO_FRAME = {
 ------------------//VARIABLES
 local player: Player = Players.LocalPlayer
 local playerGui: PlayerGui = player:WaitForChild("PlayerGui")
-local activeTopBarTween: Tween? = nil
+local activePositionTweens: {[GuiObject]: Tween} = {}
 
 ------------------//FUNCTIONS
 local function get_master_gui(): ScreenGui?
@@ -63,52 +63,79 @@ local function has_any_frame_open(frames: {[string]: GuiObject?}): boolean
 	return false
 end
 
+local function cache_normal_position(guiObject: GuiObject): ()
+	if guiObject:GetAttribute("NormalPositionX") == nil then
+		guiObject:SetAttribute("NormalPositionX", guiObject.Position.X.Scale)
+		guiObject:SetAttribute("NormalPositionXOffset", guiObject.Position.X.Offset)
+		guiObject:SetAttribute("NormalPositionY", guiObject.Position.Y.Scale)
+		guiObject:SetAttribute("NormalPositionYOffset", guiObject.Position.Y.Offset)
+	end
+end
+
+local function get_normal_x(guiObject: GuiObject): UDim
+	return UDim.new(guiObject:GetAttribute("NormalPositionX") or 0, guiObject:GetAttribute("NormalPositionXOffset") or 0)
+end
+
+local function play_horizontal_tween(guiObject: GuiObject, targetX: UDim): ()
+	local targetPosition = UDim2.new(targetX.Scale, targetX.Offset, guiObject.Position.Y.Scale, guiObject.Position.Y.Offset)
+
+	if guiObject.Position == targetPosition then
+		return
+	end
+
+	local currentTween = activePositionTweens[guiObject]
+	if currentTween then
+		currentTween:Cancel()
+		activePositionTweens[guiObject] = nil
+	end
+
+	local tween = TweenService:Create(guiObject, TOPBAR_TWEEN_INFO, {
+		Position = targetPosition,
+	})
+	activePositionTweens[guiObject] = tween
+
+	tween.Completed:Connect(function()
+		if activePositionTweens[guiObject] == tween then
+			activePositionTweens[guiObject] = nil
+		end
+	end)
+
+	tween:Play()
+end
+
 local function refresh_topbar_layout(gui: ScreenGui): ()
 	local topBar = gui:FindFirstChild("TopBar")
 	if not topBar or not topBar:IsA("Frame") then
 		return
 	end
 
-	if topBar:GetAttribute("NormalPositionX") == nil then
-		topBar:SetAttribute("NormalPositionX", topBar.Position.X.Scale)
-		topBar:SetAttribute("NormalPositionXOffset", topBar.Position.X.Offset)
-		topBar:SetAttribute("NormalPositionY", topBar.Position.Y.Scale)
-		topBar:SetAttribute("NormalPositionYOffset", topBar.Position.Y.Offset)
-	end
+	cache_normal_position(topBar)
 
 	local frames = get_frames(gui)
 	local hasOpenFrame = has_any_frame_open(frames)
-	local targetX = hasOpenFrame
-		and UDim.new(topBar:GetAttribute("NormalPositionX") or 0, topBar:GetAttribute("NormalPositionXOffset") or 0)
-		or TOPBAR_COLLAPSED_X
-	local targetPosition = UDim2.new(
-		targetX.Scale,
-		targetX.Offset,
-		topBar.Position.Y.Scale,
-		topBar.Position.Y.Offset
+	local normalTopBarX = get_normal_x(topBar)
+	local collapsedTopBarX = UDim.new(1, -TOPBAR_VISIBLE_WIDTH_WHEN_COLLAPSED)
+	local topBarTargetX = hasOpenFrame and normalTopBarX or collapsedTopBarX
+
+	play_horizontal_tween(topBar, topBarTargetX)
+
+	local deltaX = UDim.new(
+		collapsedTopBarX.Scale - normalTopBarX.Scale,
+		collapsedTopBarX.Offset - normalTopBarX.Offset
 	)
 
-	if topBar.Position == targetPosition then
-		return
-	end
+	for _, frame in frames do
+		if frame then
+			cache_normal_position(frame)
 
-	if activeTopBarTween then
-		activeTopBarTween:Cancel()
-		activeTopBarTween = nil
-	end
+			local frameNormalX = get_normal_x(frame)
+			local frameTargetX = hasOpenFrame
+				and frameNormalX
+				or UDim.new(frameNormalX.Scale + deltaX.Scale, frameNormalX.Offset + deltaX.Offset)
 
-	local tween = TweenService:Create(topBar, TOPBAR_TWEEN_INFO, {
-		Position = targetPosition,
-	})
-	activeTopBarTween = tween
-
-	tween.Completed:Connect(function()
-		if activeTopBarTween == tween then
-			activeTopBarTween = nil
+			play_horizontal_tween(frame, frameTargetX)
 		end
-	end)
-
-	tween:Play()
+	end
 end
 
 local function refresh_topbar_button_states(gui: ScreenGui): ()
