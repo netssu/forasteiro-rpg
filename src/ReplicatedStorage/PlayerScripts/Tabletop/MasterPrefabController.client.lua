@@ -1,6 +1,7 @@
 ------------------//SERVICES
 local Players: Players = game:GetService("Players")
 local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService: UserInputService = game:GetService("UserInputService")
 
 ------------------//CONSTANTS
 local GUI_NAME: string = "MasterGui"
@@ -8,6 +9,20 @@ local WINDOW_NAME: string = "PrefabWindow"
 local TOGGLE_NAME: string = "PrefabToggleButton"
 local REMOTE_NAME: string = "MasterBuildEvent"
 local PREFAB_FOLDER_NAME: string = "Prefrab"
+
+local HOLD_TO_SPRAY_SECONDS: number = 2
+local FREQUENCY_MIN: number = 1
+local FREQUENCY_MAX: number = 12
+
+local OTHER_FRAME_NAMES: {string} = {
+	"EnvironmentWindow",
+	"PlayersWindow",
+	"CombatWindow",
+	"BuildSidebar",
+	"RoomSidebar",
+	"NpcSidebar",
+	"TerrainWindow",
+}
 
 ------------------//VARIABLES
 local player: Player = Players.LocalPlayer
@@ -22,7 +37,13 @@ local prefabRoot: Folder = ReplicatedStorage:WaitForChild(PREFAB_FOLDER_NAME)
 local currentCategory: string? = nil
 local currentPrefabName: string? = nil
 local placeModeEnabled: boolean = false
+local randomScaleEnabled: boolean = false
+local randomRotationEnabled: boolean = false
+local frequencyPerSecond: number = 2
+
 local activeGui: ScreenGui? = nil
+local mouseDownAt: number? = nil
+local sprayActive: boolean = false
 
 ------------------//FUNCTIONS
 local function clear_container(container: Instance): ()
@@ -38,7 +59,6 @@ local function update_scroll_canvas(list: ScrollingFrame): ()
 	if not layout then
 		return
 	end
-
 	list.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y)
 end
 
@@ -46,11 +66,9 @@ local function get_prefab_bounds(prefab: Instance): (CFrame, Vector3)
 	if prefab:IsA("Model") then
 		return prefab:GetBoundingBox()
 	end
-
 	if prefab:IsA("BasePart") then
 		return prefab.CFrame, prefab.Size
 	end
-
 	return CFrame.new(), Vector3.new(4, 4, 4)
 end
 
@@ -61,14 +79,14 @@ local function fill_viewport(viewport: ViewportFrame, source: Instance): ()
 	local previewClone = source:Clone()
 	previewClone.Parent = worldModel
 
-	if previewClone:IsA("BasePart") then
-		previewClone.Anchored = true
-	end
-
 	for _, descendant in previewClone:GetDescendants() do
 		if descendant:IsA("BasePart") then
 			descendant.Anchored = true
 		end
+	end
+
+	if previewClone:IsA("BasePart") then
+		previewClone.Anchored = true
 	end
 
 	local objectCFrame, objectSize = get_prefab_bounds(previewClone)
@@ -102,8 +120,7 @@ local function read_grid_size(gui: ScreenGui?): number
 end
 
 local function get_place_cframe(gridSize: number): CFrame?
-	local target = mouse.Target
-	if not target then
+	if not mouse.Target then
 		return nil
 	end
 
@@ -115,6 +132,43 @@ local function get_place_cframe(gridSize: number): CFrame?
 	)
 
 	return CFrame.new(snapped)
+end
+
+local function close_other_frames(gui: ScreenGui): ()
+	for _, frameName in OTHER_FRAME_NAMES do
+		local frame = gui:FindFirstChild(frameName)
+		if frame and frame:IsA("GuiObject") then
+			frame.Visible = false
+		end
+	end
+end
+
+local function sanitize_scale_range(window: Frame): (number, number)
+	local body = window:FindFirstChild("Body")
+	if not body then
+		return 0.8, 1.2
+	end
+
+	local minBox = body:FindFirstChild("ScaleMinBox")
+	local maxBox = body:FindFirstChild("ScaleMaxBox")
+	local minValue = (minBox and minBox:IsA("TextBox") and tonumber(minBox.Text)) or 0.8
+	local maxValue = (maxBox and maxBox:IsA("TextBox") and tonumber(maxBox.Text)) or 1.2
+
+	minValue = math.clamp(minValue, 0.1, 10)
+	maxValue = math.clamp(maxValue, 0.1, 10)
+
+	if minValue > maxValue then
+		minValue, maxValue = maxValue, minValue
+	end
+
+	if minBox and minBox:IsA("TextBox") then
+		minBox.Text = string.format("%.2f", minValue)
+	end
+	if maxBox and maxBox:IsA("TextBox") then
+		maxBox.Text = string.format("%.2f", maxValue)
+	end
+
+	return minValue, maxValue
 end
 
 local function refresh_selected_label(window: Frame): ()
@@ -129,13 +183,59 @@ local function refresh_selected_label(window: Frame): ()
 	end
 end
 
-local function refresh_place_button(window: Frame): ()
+local function refresh_toggles(window: Frame): ()
 	local body = window:FindFirstChild("Body")
-	local placeToggle = body and body:FindFirstChild("PlaceToggleButton")
+	if not body then
+		return
+	end
+
+	local placeToggle = body:FindFirstChild("PlaceToggleButton")
 	if placeToggle and placeToggle:IsA("TextButton") then
 		placeToggle.Text = placeModeEnabled and "Modo colocar: ON" or "Modo colocar: OFF"
 		placeToggle.BackgroundColor3 = placeModeEnabled and Color3.fromRGB(69, 114, 84) or Color3.fromRGB(34, 36, 44)
 	end
+
+	local randomScaleButton = body:FindFirstChild("RandomScaleButton")
+	if randomScaleButton and randomScaleButton:IsA("TextButton") then
+		randomScaleButton.Text = randomScaleEnabled and "Tamanho aleatório: ON" or "Tamanho aleatório: OFF"
+		randomScaleButton.BackgroundColor3 = randomScaleEnabled and Color3.fromRGB(69, 114, 84) or Color3.fromRGB(34, 36, 44)
+	end
+
+	local randomRotationButton = body:FindFirstChild("RandomRotationButton")
+	if randomRotationButton and randomRotationButton:IsA("TextButton") then
+		randomRotationButton.Text = randomRotationEnabled and "Rotação aleatória: ON" or "Rotação aleatória: OFF"
+		randomRotationButton.BackgroundColor3 = randomRotationEnabled and Color3.fromRGB(69, 114, 84) or Color3.fromRGB(34, 36, 44)
+	end
+
+	local frequencyValueLabel = body:FindFirstChild("FrequencyValueLabel")
+	if frequencyValueLabel and frequencyValueLabel:IsA("TextLabel") then
+		frequencyValueLabel.Text = string.format("%.1f/s", frequencyPerSecond)
+	end
+end
+
+local function update_frequency_slider(window: Frame, pct: number): ()
+	pct = math.clamp(pct, 0, 1)
+	frequencyPerSecond = FREQUENCY_MIN + ((FREQUENCY_MAX - FREQUENCY_MIN) * pct)
+
+	local body = window:FindFirstChild("Body")
+	if not body then
+		return
+	end
+
+	local track = body:FindFirstChild("FrequencyTrack")
+	if track and track:IsA("Frame") then
+		local fill = track:FindFirstChild("FrequencyFill")
+		if fill and fill:IsA("Frame") then
+			fill.Size = UDim2.new(pct, 0, 1, 0)
+		end
+
+		local knob = track:FindFirstChild("FrequencyKnob")
+		if knob and knob:IsA("Frame") then
+			knob.Position = UDim2.new(pct, 0, 0.5, 0)
+		end
+	end
+
+	refresh_toggles(window)
 end
 
 local function create_item_button(parent: ScrollingFrame, categoryName: string, prefab: Instance): ()
@@ -195,7 +295,6 @@ local function create_item_button(parent: ScrollingFrame, categoryName: string, 
 	itemButton.MouseButton1Click:Connect(function()
 		currentCategory = categoryName
 		currentPrefabName = prefab.Name
-
 		if activeGui then
 			local window = activeGui:FindFirstChild(WINDOW_NAME)
 			if window and window:IsA("Frame") then
@@ -217,7 +316,6 @@ local function populate_prefab_list(window: Frame, categoryName: string): ()
 	end
 
 	clear_container(itemList)
-
 	local categoryFolder = prefabRoot:FindFirstChild(categoryName)
 	if not categoryFolder or not categoryFolder:IsA("Folder") then
 		return
@@ -245,7 +343,6 @@ local function populate_categories(window: Frame): ()
 	end
 
 	clear_container(categoryList)
-
 	for _, child in prefabRoot:GetChildren() do
 		if child:IsA("Folder") then
 			local categoryButton = Instance.new("TextButton")
@@ -278,70 +375,8 @@ local function populate_categories(window: Frame): ()
 	update_scroll_canvas(categoryList)
 end
 
-local function wire_window_controls(gui: ScreenGui, window: Frame): ()
-	local topBar = gui:FindFirstChild("TopBar")
-	if not topBar then
-		return
-	end
-
-	local toggleButton = topBar:FindFirstChild(TOGGLE_NAME)
-	local header = window:FindFirstChild("Header")
-	local closeButton = header and header:FindFirstChild("CloseButton")
-	local body = window:FindFirstChild("Body")
-	local placeToggle = body and body:FindFirstChild("PlaceToggleButton")
-
-	if toggleButton and toggleButton:IsA("TextButton") and not toggleButton:GetAttribute("PrefabBound") then
-		toggleButton:SetAttribute("PrefabBound", true)
-		toggleButton.MouseButton1Click:Connect(function()
-			if window.Visible then
-				populate_categories(window)
-				if currentCategory then
-					populate_prefab_list(window, currentCategory)
-				end
-			end
-		end)
-	end
-
-	if closeButton and closeButton:IsA("TextButton") and not closeButton:GetAttribute("PrefabBound") then
-		closeButton:SetAttribute("PrefabBound", true)
-		closeButton.MouseButton1Click:Connect(function()
-			window.Visible = false
-		end)
-	end
-
-	if placeToggle and placeToggle:IsA("TextButton") and not placeToggle:GetAttribute("PrefabBound") then
-		placeToggle:SetAttribute("PrefabBound", true)
-		placeToggle.MouseButton1Click:Connect(function()
-			placeModeEnabled = not placeModeEnabled
-			refresh_place_button(window)
-		end)
-	end
-
-	refresh_place_button(window)
-	refresh_selected_label(window)
-end
-
-local function wire_gui(gui: ScreenGui): ()
-	activeGui = gui
-	local window = gui:FindFirstChild(WINDOW_NAME)
-	if not window or not window:IsA("Frame") then
-		return
-	end
-
-	populate_categories(window)
-	wire_window_controls(gui, window)
-end
-
 local function try_place_prefab(): ()
-	if not placeModeEnabled then
-		return
-	end
-
-	if not currentCategory or not currentPrefabName then
-		return
-	end
-
-	if not activeGui then
+	if not placeModeEnabled or not currentCategory or not currentPrefabName or not activeGui then
 		return
 	end
 
@@ -356,12 +391,151 @@ local function try_place_prefab(): ()
 		return
 	end
 
+	local rotationY = 0
+	if randomRotationEnabled then
+		rotationY = math.random(0, 359)
+	end
+
+	local scaleFactor = 1
+	if randomScaleEnabled then
+		local minScale, maxScale = sanitize_scale_range(window)
+		scaleFactor = minScale + ((maxScale - minScale) * math.random())
+	end
+
 	masterBuildEvent:FireServer({
 		Action = "CreatePrefab",
 		Category = currentCategory,
 		PrefabName = currentPrefabName,
 		CFrame = placeCFrame,
+		RotationY = rotationY,
+		ScaleFactor = scaleFactor,
 	})
+end
+
+local function start_spray_loop(): ()
+	if sprayActive then
+		return
+	end
+
+	sprayActive = true
+	task.spawn(function()
+		while sprayActive do
+			try_place_prefab()
+			local rate = math.max(0.2, frequencyPerSecond)
+			task.wait(1 / rate)
+		end
+	end)
+end
+
+local function stop_spray_loop(): ()
+	sprayActive = false
+end
+
+local function wire_window_controls(gui: ScreenGui, window: Frame): ()
+	local topBar = gui:FindFirstChild("TopBar")
+	if not topBar then
+		return
+	end
+
+	local toggleButton = topBar:FindFirstChild(TOGGLE_NAME)
+	local header = window:FindFirstChild("Header")
+	local closeButton = header and header:FindFirstChild("CloseButton")
+	local body = window:FindFirstChild("Body")
+	local placeToggle = body and body:FindFirstChild("PlaceToggleButton")
+	local randomScaleButton = body and body:FindFirstChild("RandomScaleButton")
+	local randomRotationButton = body and body:FindFirstChild("RandomRotationButton")
+	local frequencyTrack = body and body:FindFirstChild("FrequencyTrack")
+	local sliderDragging = false
+
+	if toggleButton and toggleButton:IsA("TextButton") and not toggleButton:GetAttribute("PrefabBound") then
+		toggleButton:SetAttribute("PrefabBound", true)
+		toggleButton.MouseButton1Click:Connect(function()
+			local willOpen = not window.Visible
+			if willOpen then
+				close_other_frames(gui)
+				populate_categories(window)
+				if currentCategory then
+					populate_prefab_list(window, currentCategory)
+				end
+			end
+			window.Visible = willOpen
+		end)
+	end
+
+	if closeButton and closeButton:IsA("TextButton") and not closeButton:GetAttribute("PrefabBound") then
+		closeButton:SetAttribute("PrefabBound", true)
+		closeButton.MouseButton1Click:Connect(function()
+			window.Visible = false
+		end)
+	end
+
+	if placeToggle and placeToggle:IsA("TextButton") and not placeToggle:GetAttribute("PrefabBound") then
+		placeToggle:SetAttribute("PrefabBound", true)
+		placeToggle.MouseButton1Click:Connect(function()
+			placeModeEnabled = not placeModeEnabled
+			refresh_toggles(window)
+		end)
+	end
+
+	if randomScaleButton and randomScaleButton:IsA("TextButton") and not randomScaleButton:GetAttribute("PrefabBound") then
+		randomScaleButton:SetAttribute("PrefabBound", true)
+		randomScaleButton.MouseButton1Click:Connect(function()
+			randomScaleEnabled = not randomScaleEnabled
+			sanitize_scale_range(window)
+			refresh_toggles(window)
+		end)
+	end
+
+	if randomRotationButton and randomRotationButton:IsA("TextButton") and not randomRotationButton:GetAttribute("PrefabBound") then
+		randomRotationButton:SetAttribute("PrefabBound", true)
+		randomRotationButton.MouseButton1Click:Connect(function()
+			randomRotationEnabled = not randomRotationEnabled
+			refresh_toggles(window)
+		end)
+	end
+
+	if frequencyTrack and frequencyTrack:IsA("Frame") and not frequencyTrack:GetAttribute("PrefabBound") then
+		frequencyTrack:SetAttribute("PrefabBound", true)
+
+		local function update_by_mouse_x(mouseX: number): ()
+			local pct = (mouseX - frequencyTrack.AbsolutePosition.X) / frequencyTrack.AbsoluteSize.X
+			update_frequency_slider(window, pct)
+		end
+
+		frequencyTrack.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 then
+				sliderDragging = true
+				update_by_mouse_x(input.Position.X)
+			end
+		end)
+
+		UserInputService.InputChanged:Connect(function(input)
+			if sliderDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+				update_by_mouse_x(input.Position.X)
+			end
+		end)
+
+		UserInputService.InputEnded:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 then
+				sliderDragging = false
+			end
+		end)
+	end
+
+	update_frequency_slider(window, (frequencyPerSecond - FREQUENCY_MIN) / (FREQUENCY_MAX - FREQUENCY_MIN))
+	refresh_toggles(window)
+	refresh_selected_label(window)
+end
+
+local function wire_gui(gui: ScreenGui): ()
+	activeGui = gui
+	local window = gui:FindFirstChild(WINDOW_NAME)
+	if not window or not window:IsA("Frame") then
+		return
+	end
+
+	populate_categories(window)
+	wire_window_controls(gui, window)
 end
 
 ------------------//INIT
@@ -380,6 +554,41 @@ playerGui.ChildAdded:Connect(function(child)
 	end
 end)
 
-mouse.Button1Down:Connect(function()
-	try_place_prefab()
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then
+		return
+	end
+
+	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+		return
+	end
+
+	mouseDownAt = os.clock()
+	task.delay(HOLD_TO_SPRAY_SECONDS, function()
+		if not mouseDownAt then
+			return
+		end
+
+		if os.clock() - mouseDownAt >= HOLD_TO_SPRAY_SECONDS then
+			start_spray_loop()
+		end
+	end)
+end)
+
+UserInputService.InputEnded:Connect(function(input, _gameProcessed)
+	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+		return
+	end
+
+	local pressedAt = mouseDownAt
+	mouseDownAt = nil
+
+	if sprayActive then
+		stop_spray_loop()
+		return
+	end
+
+	if pressedAt and (os.clock() - pressedAt) < HOLD_TO_SPRAY_SECONDS then
+		try_place_prefab()
+	end
 end)

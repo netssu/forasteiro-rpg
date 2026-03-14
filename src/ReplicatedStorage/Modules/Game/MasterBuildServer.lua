@@ -652,7 +652,7 @@ local function get_prefab_root(): Folder?
 	return nil
 end
 
-local function create_prefab(category: string, prefabName: string, targetCFrame: CFrame): ()
+local function create_prefab(category: string, prefabName: string, targetCFrame: CFrame, rotationY: number?, scaleFactor: number?): ()
 	local prefabRoot = get_prefab_root()
 	if not prefabRoot then
 		return
@@ -677,15 +677,29 @@ local function create_prefab(category: string, prefabName: string, targetCFrame:
 	clone.Name = source.Name
 	clone.Parent = buildFolder
 
+	local safeScaleFactor = typeof(scaleFactor) == "number" and math.clamp(scaleFactor, 0.1, 10) or 1
+	local yawRotation = typeof(rotationY) == "number" and math.rad(rotationY) or 0
+	local rotatedTarget = targetCFrame * CFrame.Angles(0, yawRotation, 0)
+
 	if clone:IsA("Model") then
+		if safeScaleFactor ~= 1 then
+			pcall(function()
+				clone:ScaleTo(safeScaleFactor)
+			end)
+		end
+
 		local _, extentsSize = clone:GetBoundingBox()
 		local yOffset = math.max(0, extentsSize.Y * 0.5)
 		local currentPivot = clone:GetPivot()
-		local targetPivot = targetCFrame * CFrame.new(0, yOffset, 0)
+		local targetPivot = rotatedTarget * CFrame.new(0, yOffset, 0)
 		clone:PivotTo(targetPivot * currentPivot.Rotation)
 	elseif clone:IsA("BasePart") then
+		if safeScaleFactor ~= 1 then
+			clone.Size = clone.Size * safeScaleFactor
+		end
+
 		local yOffset = math.max(0, clone.Size.Y * 0.5)
-		clone.CFrame = targetCFrame * CFrame.new(0, yOffset, 0)
+		clone.CFrame = rotatedTarget * CFrame.new(0, yOffset, 0)
 	end
 
 	for _, descendant in clone:GetDescendants() do
@@ -850,7 +864,7 @@ function MasterBuildManager.process_request(player: Player, payload: any): ()
 			return
 		end
 
-		create_prefab(payload.Category, payload.PrefabName, payload.CFrame)
+		create_prefab(payload.Category, payload.PrefabName, payload.CFrame, payload.RotationY, payload.ScaleFactor)
 		return
 	end
 
