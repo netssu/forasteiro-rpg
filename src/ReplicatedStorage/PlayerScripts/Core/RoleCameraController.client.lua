@@ -30,6 +30,7 @@ local PLAYER_SPECTATOR_ATTRIBUTE_NAME: string = "PlayerSpectatorEnabled"
 local PLAYER_SPECTATOR_BUTTON_NAME: string = "SpectatorToggleButton"
 local PLAYER_SPECTATOR_BUTTON_TEXT: string = "Espectador (L)"
 local PLAYER_FIRST_PERSON_BUTTON_TEXT: string = "1ª Pessoa (L)"
+local MASTER_SPECTATOR_JUMP_ATTRIBUTE_NAME: string = "MasterSpectatorJumpCFrame"
 
 local PLAYER_SPECTATOR_BACK_DISTANCE: number = 14
 local PLAYER_SPECTATOR_HEIGHT: number = 6
@@ -514,6 +515,22 @@ local function update_role_state(): ()
 	update_spectator_toggle_button()
 end
 
+local function jump_master_spectator_camera(targetCFrame: CFrame): ()
+	if not is_master_role() then
+		return
+	end
+
+	if not spectatorEnabled then
+		enable_spectator_mode(targetCFrame)
+		return
+	end
+
+	spectatorCFrame = targetCFrame
+	local nextPitch, nextYaw = targetCFrame:ToOrientation()
+	pitch = nextPitch
+	yaw = nextYaw
+end
+
 local function toggle_player_mouse_mode(): ()
 	if not is_player_role() or spectatorEnabled then
 		return
@@ -626,6 +643,15 @@ end)
 
 UserInputService.InputChanged:Connect(function(input: InputObject)
 	handle_wheel_input(input)
+end)
+
+player:GetAttributeChangedSignal(MASTER_SPECTATOR_JUMP_ATTRIBUTE_NAME):Connect(function()
+	local jumpTarget = player:GetAttribute(MASTER_SPECTATOR_JUMP_ATTRIBUTE_NAME)
+	if typeof(jumpTarget) ~= "CFrame" then
+		return
+	end
+
+	jump_master_spectator_camera(jumpTarget)
 end)
 
 player:GetAttributeChangedSignal(PLAYER_SPECTATOR_ATTRIBUTE_NAME):Connect(function()

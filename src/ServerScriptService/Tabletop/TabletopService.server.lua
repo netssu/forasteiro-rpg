@@ -46,6 +46,7 @@ local state = {
 	activeTurnIndex = 0,
 	combatOrder = {},
 	healthData = {},
+	isSharedTurnModeEnabled = false,
 }
 
 local healthChangedConnections = {}
@@ -67,8 +68,8 @@ local function is_master(player: Player): boolean
 end
 
 local function get_player_label(player: Player): string
-	if player.DisplayName ~= player.Name then
-		return player.DisplayName .. " (@" .. player.Name .. ")"
+	if typeof(player.DisplayName) == "string" and player.DisplayName ~= "" then
+		return player.DisplayName
 	end
 
 	return player.Name
@@ -86,6 +87,31 @@ local function get_humanoid(character: Model): Humanoid?
 	end
 
 	return nil
+end
+
+local function get_character_root_part(character: Model?): BasePart?
+	if not character then
+		return nil
+	end
+
+	local rootPart = character:FindFirstChild("HumanoidRootPart")
+	if rootPart and rootPart:IsA("BasePart") then
+		return rootPart
+	end
+
+	return nil
+end
+
+local function move_character_to_position(character: Model, targetPosition: Vector3): ()
+	local rootPart = get_character_root_part(character)
+	if not rootPart then
+		return
+	end
+
+	rootPart.AssemblyLinearVelocity = Vector3.zero
+	rootPart.AssemblyAngularVelocity = Vector3.zero
+	local rx, ry, rz = rootPart.CFrame:ToOrientation()
+	rootPart.CFrame = CFrame.new(targetPosition) * CFrame.fromOrientation(rx, ry, rz)
 end
 
 local function ensure_health_entry(character: Model): {}
@@ -378,9 +404,13 @@ local function refresh_turn_and_lock_state(): ()
 		if not character:IsA("Model") then continue end
 
 		local isTurnActive = activeEntry and activeEntry.Character == character or false
+		if state.isSharedTurnModeEnabled then
+			isTurnActive = true
+		end
+
 		local movementLocked = state.manualLocks[character] == true
 
-		if state.combatStarted then
+		if state.combatStarted and not state.isSharedTurnModeEnabled then
 			movementLocked = movementLocked or not isTurnActive
 		end
 
@@ -468,6 +498,7 @@ local function build_snapshot(): {}
 			PresetName = state.presetName,
 			RainEnabled = state.rainEnabled,
 			CombatStarted = state.combatStarted,
+			IsSharedTurnModeEnabled = state.isSharedTurnModeEnabled,
 			ActiveTurnIndex = state.activeTurnIndex,
 			ActiveTurnCharacter = activeEntry and activeEntry.Character or nil,
 			Characters = serialize_characters(),
@@ -584,6 +615,53 @@ local function advance_turn(): ()
 	end
 end
 
+local function set_shared_turn_mode_enabled(isEnabled: boolean): ()
+	state.isSharedTurnModeEnabled = isEnabled
+end
+
+local function teleport_master_to_character(masterPlayer: Player, targetCharacter: Model): ()
+	local masterCharacter = masterPlayer.Character
+	local masterRoot = get_character_root_part(masterCharacter)
+	local targetRoot = get_character_root_part(targetCharacter)
+
+	if not masterRoot or not targetRoot then
+		return
+	end
+
+	local targetPosition = targetRoot.Position + Vector3.new(0, 0, 4)
+	masterRoot.AssemblyLinearVelocity = Vector3.zero
+	masterRoot.AssemblyAngularVelocity = Vector3.zero
+	masterRoot.CFrame = CFrame.lookAt(targetPosition, targetRoot.Position)
+end
+
+local function teleport_all_players_to_master(masterPlayer: Player): ()
+	local masterRoot = get_character_root_part(masterPlayer.Character)
+	if not masterRoot then
+		return
+	end
+
+	local offsetIndex = 0
+	for _, character in charactersFolder:GetChildren() do
+		if not character:IsA("Model") then
+			continue
+		end
+
+		if character:GetAttribute("IsNPC") == true then
+			continue
+		end
+
+		local targetPlayer = Players:GetPlayerFromCharacter(character)
+		if not targetPlayer or targetPlayer == masterPlayer then
+			continue
+		end
+
+		offsetIndex += 1
+		local angle = (offsetIndex - 1) * (math.pi / 4)
+		local offset = Vector3.new(math.cos(angle), 0, math.sin(angle)) * 4
+		move_character_to_position(character, masterRoot.Position + offset)
+	end
+end
+
 local function set_character_health(character: Model, currentHealth: number, maxHealth: number): ()
 	if not character then
 		return
@@ -635,6 +713,17 @@ local function on_tabletop_request(player: Player, payload: any): ()
 		stop_combat()
 	elseif action == "NextTurn" then
 		advance_turn()
+		if state.isSharedTurnModeEnabled then
+			for _, targetPlayer in Players:GetPlayers() do
+				movementEvent:FireClient(targetPlayer, { Action = "ClearTrail" })
+			end
+		end
+	elseif action == "SetSharedTurnMode" and typeof(payload.Enabled) == "boolean" then
+		set_shared_turn_mode_enabled(payload.Enabled)
+	elseif action == "TeleportMasterToCharacter" and typeof(payload.Character) == "Instance" and payload.Character:IsA("Model") then
+		teleport_master_to_character(player, payload.Character)
+	elseif action == "TeleportAllPlayersToMaster" then
+		teleport_all_players_to_master(player)
 	elseif action == "SetCharacterHealth"
 		and typeof(payload.Character) == "Instance"
 		and typeof(payload.CurrentHealth) == "number"
