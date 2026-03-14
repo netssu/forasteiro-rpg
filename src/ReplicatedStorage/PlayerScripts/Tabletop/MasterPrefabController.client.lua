@@ -47,6 +47,7 @@ local activeGui: ScreenGui? = nil
 local selectedDeleteTarget: Instance? = nil
 local mouseDownAt: number? = nil
 local sprayActive: boolean = false
+local boundWindows: {[Frame]: boolean} = {}
 
 ------------------//FUNCTIONS
 local function clear_container(container: Instance): ()
@@ -562,14 +563,17 @@ local function wire_window_controls(gui: ScreenGui, window: Frame): ()
 	local frequencyTrack = body and body:FindFirstChild("FrequencyTrack")
 	local sliderDragging = false
 
-	if window:GetAttribute("PrefabControlsBound") == true then
+	if boundWindows[window] then
 		update_frequency_slider(window, (frequencyPerSecond - FREQUENCY_MIN) / (FREQUENCY_MAX - FREQUENCY_MIN))
 		refresh_toggles(window)
 		refresh_selected_label(window)
 		return
 	end
 
-	window:SetAttribute("PrefabControlsBound", true)
+	boundWindows[window] = true
+	window.Destroying:Connect(function()
+		boundWindows[window] = nil
+	end)
 
 	if toggleButton and toggleButton:IsA("TextButton") then
 		toggleButton.MouseButton1Click:Connect(function()
