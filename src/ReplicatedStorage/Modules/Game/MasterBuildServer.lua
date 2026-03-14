@@ -1,3 +1,6 @@
+------------------//SERVICES
+local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
+
 ------------------//CONSTANTS
 local MASTER_TEAM_NAME: string = "Mestre"
 local BUILD_FOLDER_NAME: string = "TabletopBuildParts"
@@ -11,6 +14,7 @@ local WALL_HEIGHT_RATIO: number = 1.25
 local WALL_ALIGNMENT_DOT: number = 0.92
 local BASEPLATE_NAME: string = "Baseplate"
 local TERRAIN_STEP_SIZE: number = 4
+local PREFAB_ROOT_NAME: string = "Prefrab"
 
 ------------------//VARIABLES
 local MasterBuildManager = {}
@@ -639,6 +643,66 @@ local function reset_generated_terrain(userId: number): ()
 	set_baseplate_enabled(true)
 end
 
+local function get_prefab_root(): Folder?
+	local folder = ReplicatedStorage:FindFirstChild(PREFAB_ROOT_NAME)
+	if folder and folder:IsA("Folder") then
+		return folder
+	end
+
+	return nil
+end
+
+local function create_prefab(category: string, prefabName: string, targetCFrame: CFrame): ()
+	local prefabRoot = get_prefab_root()
+	if not prefabRoot then
+		return
+	end
+
+	local categoryFolder = prefabRoot:FindFirstChild(category)
+	if not categoryFolder or not categoryFolder:IsA("Folder") then
+		return
+	end
+
+	local source = categoryFolder:FindFirstChild(prefabName)
+	if not source then
+		return
+	end
+
+	local buildFolder = get_build_folder()
+	if not buildFolder then
+		return
+	end
+
+	local clone = source:Clone()
+	clone.Name = source.Name
+	clone.Parent = buildFolder
+
+	if clone:IsA("Model") then
+		local _, extentsSize = clone:GetBoundingBox()
+		local yOffset = math.max(0, extentsSize.Y * 0.5)
+		local currentPivot = clone:GetPivot()
+		local targetPivot = targetCFrame * CFrame.new(0, yOffset, 0)
+		clone:PivotTo(targetPivot * currentPivot.Rotation)
+	elseif clone:IsA("BasePart") then
+		local yOffset = math.max(0, clone.Size.Y * 0.5)
+		clone.CFrame = targetCFrame * CFrame.new(0, yOffset, 0)
+	end
+
+	for _, descendant in clone:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			descendant.Anchored = true
+			descendant:SetAttribute("IsTabletopBuildPart", true)
+			descendant:SetAttribute("BuildKind", "Prefab")
+		end
+	end
+
+	if clone:IsA("BasePart") then
+		clone.Anchored = true
+		clone:SetAttribute("IsTabletopBuildPart", true)
+		clone:SetAttribute("BuildKind", "Prefab")
+	end
+end
+
 ------------------//MAIN FUNCTIONS
 function MasterBuildManager.process_request(player: Player, payload: any): ()
 	if player.Team == nil or player.Team.Name ~= MASTER_TEAM_NAME then
@@ -778,6 +842,15 @@ function MasterBuildManager.process_request(player: Player, payload: any): ()
 			delete_build_part(part)
 		end
 
+		return
+	end
+
+	if action == "CreatePrefab" then
+		if typeof(payload.Category) ~= "string" or typeof(payload.PrefabName) ~= "string" or typeof(payload.CFrame) ~= "CFrame" then
+			return
+		end
+
+		create_prefab(payload.Category, payload.PrefabName, payload.CFrame)
 		return
 	end
 
