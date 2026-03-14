@@ -23,11 +23,11 @@ local playerButton: TextButton? = nil
 
 local masterConnection: RBXScriptConnection? = nil
 local playerConnection: RBXScriptConnection? = nil
-local isTransitionPlaying: boolean = false
+local isSelectionTransitionInProgress: boolean = false
 
 
 ------------------//FUNCTIONS
-local function cache_gui_objects(): ()
+local function cache_team_selection_gui_objects(): ()
 	local guiObject = playerGui:FindFirstChild(TeamDictionary.GUI_NAME)
 	if not guiObject or not guiObject:IsA("ScreenGui") then
 		teamGui = nil
@@ -55,12 +55,12 @@ local function disconnect_button_connections(): ()
 	end
 end
 
-local function select_team(teamName: string): ()
-	if isTransitionPlaying then
+local function request_team_selection(teamName: string): ()
+	if isSelectionTransitionInProgress then
 		return
 	end
 
-	isTransitionPlaying = true
+	isSelectionTransitionInProgress = true
 
 	task.spawn(function()
 		local container: GuiObject? = playerGui:FindFirstChild("BothUI")
@@ -71,7 +71,7 @@ local function select_team(teamName: string): ()
 
 		if not container then
 			teamSelectEvent:FireServer(teamName)
-			isTransitionPlaying = false
+			isSelectionTransitionInProgress = false
 			return
 		end
 
@@ -88,7 +88,7 @@ local function select_team(teamName: string): ()
 			teamSelectEvent:FireServer(teamName)
 		end
 
-		isTransitionPlaying = false
+		isSelectionTransitionInProgress = false
 	end)
 end
 
@@ -99,16 +99,16 @@ local function connect_buttons(): ()
 	end
 
 	masterConnection = masterButton.MouseButton1Click:Connect(function()
-		select_team(TeamDictionary.MASTER_TEAM_NAME)
+		request_team_selection(TeamDictionary.MASTER_TEAM_NAME)
 	end)
 
 	playerConnection = playerButton.MouseButton1Click:Connect(function()
-		select_team(TeamDictionary.PLAYER_TEAM_NAME)
+		request_team_selection(TeamDictionary.PLAYER_TEAM_NAME)
 	end)
 end
 
-local function update_menu_state(): ()
-	cache_gui_objects()
+local function refresh_menu_state(): ()
+	cache_team_selection_gui_objects()
 
 	if not player.Team then
 		if teamGui then
@@ -124,15 +124,15 @@ local function update_menu_state(): ()
 	MenuCamera.disable()
 end
 
-local function on_gui_added(child: Instance): ()
+local function on_team_gui_added(child: Instance): ()
 	if child.Name ~= TeamDictionary.GUI_NAME then
 		return
 	end
 
 	task.defer(function()
-		cache_gui_objects()
+		cache_team_selection_gui_objects()
 		connect_buttons()
-		update_menu_state()
+		refresh_menu_state()
 	end)
 end
 
@@ -141,11 +141,11 @@ local TeamSelectorController = {}
 
 function TeamSelectorController.run(): ()
 	teamSelectEvent = TeamRemoteUtility.get_team_select_event()
-	cache_gui_objects()
+	cache_team_selection_gui_objects()
 	connect_buttons()
-	update_menu_state()
-	player:GetPropertyChangedSignal("Team"):Connect(update_menu_state)
-	playerGui.ChildAdded:Connect(on_gui_added)
+	refresh_menu_state()
+	player:GetPropertyChangedSignal("Team"):Connect(refresh_menu_state)
+	playerGui.ChildAdded:Connect(on_team_gui_added)
 end
 
 return TeamSelectorController
