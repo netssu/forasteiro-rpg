@@ -9,6 +9,7 @@ local utilityFolder: Folder = modulesFolder:WaitForChild("Utility")
 local TeamDictionary = require(dictionaryFolder:WaitForChild("TeamDictionary"))
 local TeamRemoteUtility = require(utilityFolder:WaitForChild("TeamRemoteUtility"))
 local MenuCamera = require(utilityFolder:WaitForChild("MenuCamera"))
+local SquareTransition = require(utilityFolder:WaitForChild("SquareTransition"))
 
 ------------------//VARIABLES
 local player: Player = Players.LocalPlayer
@@ -22,6 +23,8 @@ local playerButton: TextButton? = nil
 
 local masterConnection: RBXScriptConnection? = nil
 local playerConnection: RBXScriptConnection? = nil
+local isTransitionPlaying: boolean = false
+
 
 ------------------//FUNCTIONS
 local function cache_gui_objects(): ()
@@ -53,7 +56,45 @@ local function disconnect_button_connections(): ()
 end
 
 local function select_team(teamName: string): ()
-	teamSelectEvent:FireServer(teamName)
+	if isTransitionPlaying then
+		return
+	end
+
+	isTransitionPlaying = true
+
+	task.spawn(function()
+		local container: GuiObject? = nil
+		local screamGui = playerGui:FindFirstChild("screamGui")
+
+		if screamGui and screamGui:IsA("ScreenGui") then
+			container = screamGui:FindFirstChild("BothUI") :: GuiObject?
+		end
+
+		if not container then
+			container = mainFrame
+		end
+
+		if not container then
+			teamSelectEvent:FireServer(teamName)
+			isTransitionPlaying = false
+			return
+		end
+
+		local success = pcall(function()
+			SquareTransition.play(container, {
+				tileSize = 100,
+				onFilled = function()
+					teamSelectEvent:FireServer(teamName)
+				end,
+			})
+		end)
+
+		if not success then
+			teamSelectEvent:FireServer(teamName)
+		end
+
+		isTransitionPlaying = false
+	end)
 end
 
 local function connect_buttons(): ()
