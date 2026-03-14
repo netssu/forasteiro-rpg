@@ -13,6 +13,7 @@ local ROLE_IMAGE_REMOTE_NAME: string = "RoleImageEvent"
 local GUI_NAME: string = "MasterGui"
 local RETURN_TO_MENU_ACTION: string = "ReturnToMenu"
 local ROLE_IMAGE_ATTRIBUTE_NAME: string = "RoleImageId"
+local MASTER_SPECTATOR_JUMP_ATTRIBUTE_NAME: string = "MasterSpectatorJumpCFrame"
 
 local ORDER_ROW_HEIGHT: number = 42
 local ORDER_ROW_PADDING: number = 6
@@ -27,6 +28,10 @@ local remotesFolder: Folder = assetsFolder:WaitForChild("Remotes")
 local teamSelectEvent: RemoteEvent = remotesFolder:WaitForChild(TEAM_REMOTE_NAME)
 local tabletopEvent: RemoteEvent = remotesFolder:WaitForChild(TABLETOP_REMOTE_NAME)
 local roleImageEvent: RemoteEvent = remotesFolder:WaitForChild(ROLE_IMAGE_REMOTE_NAME)
+
+local modulesFolder: Folder = ReplicatedStorage:WaitForChild("Modules")
+local utilityFolder: Folder = modulesFolder:WaitForChild("Utility")
+local SquareTransition = require(utilityFolder:WaitForChild("SquareTransition"))
 
 local masterGui: ScreenGui? = nil
 local topBar: Frame? = nil
@@ -295,7 +300,7 @@ local function render_players_list(): ()
 		end
 
 		local row = Instance.new("Frame")
-		row.Size = UDim2.new(1, -8, 0, 154)
+		row.Size = UDim2.new(1, -8, 0, 136)
 		row.BackgroundColor3 = Color3.fromRGB(26, 28, 34)
 		row.BorderSizePixel = 0
 		row.Parent = playersList
@@ -306,7 +311,7 @@ local function render_players_list(): ()
 		local nameLabel = Instance.new("TextLabel")
 		nameLabel.BackgroundTransparency = 1
 		nameLabel.Position = UDim2.fromOffset(12, 8)
-		nameLabel.Size = UDim2.new(1, -24, 0, 18)
+		nameLabel.Size = UDim2.new(1, -220, 0, 18)
 		nameLabel.Font = Enum.Font.GothamBold
 		nameLabel.Text = charData.Label .. " [" .. (charData.RoleName ~= "" and charData.RoleName or "NPC") .. "]"
 		nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -316,8 +321,8 @@ local function render_players_list(): ()
 
 		local stateLabel = Instance.new("TextLabel")
 		stateLabel.BackgroundTransparency = 1
-		stateLabel.Position = UDim2.fromOffset(12, 30)
-		stateLabel.Size = UDim2.new(1, -24, 0, 16)
+		stateLabel.Position = UDim2.fromOffset(12, 28)
+		stateLabel.Size = UDim2.new(1, -24, 0, 14)
 		stateLabel.Font = Enum.Font.GothamMedium
 		stateLabel.Text = charData.MovementLocked and "Movimento: Travado" or "Movimento: Livre"
 		stateLabel.TextColor3 = charData.MovementLocked and Color3.fromRGB(255, 170, 170) or Color3.fromRGB(170, 255, 170)
@@ -327,34 +332,34 @@ local function render_players_list(): ()
 
 		local hpLabel = Instance.new("TextLabel")
 		hpLabel.BackgroundTransparency = 1
-		hpLabel.Position = UDim2.fromOffset(12, 58)
-		hpLabel.Size = UDim2.fromOffset(28, 24)
+		hpLabel.Position = UDim2.new(1, -200, 0, 8)
+		hpLabel.Size = UDim2.fromOffset(24, 18)
 		hpLabel.Font = Enum.Font.GothamBold
 		hpLabel.Text = "HP"
 		hpLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 		hpLabel.TextSize = 12
 		hpLabel.Parent = row
 
-		local currentBox = create_text_box(row, tostring(math.floor(charData.CurrentHealth + 0.5)), UDim2.fromOffset(60, 24), UDim2.fromOffset(44, 58))
+		local currentBox = create_text_box(row, tostring(math.floor(charData.CurrentHealth + 0.5)), UDim2.fromOffset(52, 20), UDim2.new(1, -172, 0, 8))
 
 		local slashLabel = Instance.new("TextLabel")
 		slashLabel.BackgroundTransparency = 1
-		slashLabel.Position = UDim2.fromOffset(110, 58)
-		slashLabel.Size = UDim2.fromOffset(14, 24)
+		slashLabel.Position = UDim2.new(1, -118, 0, 8)
+		slashLabel.Size = UDim2.fromOffset(14, 18)
 		slashLabel.Font = Enum.Font.GothamBold
 		slashLabel.Text = "/"
 		slashLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 		slashLabel.TextSize = 12
 		slashLabel.Parent = row
 
-		local maxBox = create_text_box(row, tostring(math.floor(charData.MaxHealth + 0.5)), UDim2.fromOffset(60, 24), UDim2.fromOffset(124, 58))
-		local teleportToPlayerButton = create_text_button(row, "Ir até", UDim2.fromOffset(70, 24), UDim2.fromOffset(194, 58))
-		local lockButton = create_text_button(row, charData.ManualMovementLocked and "Desbloq." or "Bloquear", UDim2.fromOffset(92, 24), UDim2.fromOffset(272, 58))
-		local addTurnButton = create_text_button(row, "Add Turno", UDim2.fromOffset(94, 24), UDim2.fromOffset(372, 58))
+		local maxBox = create_text_box(row, tostring(math.floor(charData.MaxHealth + 0.5)), UDim2.fromOffset(52, 20), UDim2.new(1, -98, 0, 8))
+		local teleportToPlayerButton = create_text_button(row, "Ir até", UDim2.new(0.32, -8, 0, 24), UDim2.fromOffset(12, 48))
+		local lockButton = create_text_button(row, charData.ManualMovementLocked and "Desbloq." or "Bloquear", UDim2.new(0.32, -8, 0, 24), UDim2.new(0.34, 0, 0, 48))
+		local addTurnButton = create_text_button(row, "Add Turno", UDim2.new(0.32, -8, 0, 24), UDim2.new(0.68, -4, 0, 48))
 
 		local imageLabel = Instance.new("TextLabel")
 		imageLabel.BackgroundTransparency = 1
-		imageLabel.Position = UDim2.fromOffset(12, 92)
+		imageLabel.Position = UDim2.fromOffset(12, 80)
 		imageLabel.Size = UDim2.fromOffset(48, 24)
 		imageLabel.Font = Enum.Font.GothamBold
 		imageLabel.Text = "IMAGEM"
@@ -362,7 +367,7 @@ local function render_players_list(): ()
 		imageLabel.TextSize = 12
 		imageLabel.Parent = row
 
-		local imageIdBox = create_text_box(row, get_character_image_id(charData.Character), UDim2.new(1, -70, 0, 24), UDim2.fromOffset(12, 120))
+		local imageIdBox = create_text_box(row, get_character_image_id(charData.Character), UDim2.new(1, -24, 0, 24), UDim2.fromOffset(12, 104))
 
 		local function sync_health_fields(): ()
 			local currentHealth = sanitize_number(currentBox.Text)
@@ -410,9 +415,17 @@ local function render_players_list(): ()
 		end)
 
 		teleportToPlayerButton.MouseButton1Click:Connect(function()
-			fire_tabletop("TeleportMasterToCharacter", {
-				Character = charData.Character,
-			})
+			local targetCharacter = charData.Character
+			local rootPart = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
+			if not rootPart or not rootPart:IsA("BasePart") then
+				return
+			end
+
+			local targetCFrame = CFrame.lookAt(
+				rootPart.Position + Vector3.new(0, 8, 12),
+				rootPart.Position + Vector3.new(0, 2, 0)
+			)
+			player:SetAttribute(MASTER_SPECTATOR_JUMP_ATTRIBUTE_NAME, targetCFrame)
 		end)
 	end
 end
@@ -605,9 +618,32 @@ local function connect_static_buttons(): ()
 	end
 
 	connect_button_click(returnButton, function()
-		teamSelectEvent:FireServer({
-			Action = RETURN_TO_MENU_ACTION,
-		})
+		local container: GuiObject? = playerGui:FindFirstChild("BothUI")
+		if not container then
+			container = masterGui
+		end
+
+		if not container then
+			teamSelectEvent:FireServer({ Action = RETURN_TO_MENU_ACTION })
+			return
+		end
+
+		if masterGui then
+			masterGui.Enabled = false
+		end
+
+		local ok = pcall(function()
+			SquareTransition.play(container, {
+				tileSize = 100,
+				onFilled = function()
+					teamSelectEvent:FireServer({ Action = RETURN_TO_MENU_ACTION })
+				end,
+			})
+		end)
+
+		if not ok then
+			teamSelectEvent:FireServer({ Action = RETURN_TO_MENU_ACTION })
+		end
 	end)
 
 	connect_button_click(environmentToggleButton, function()
