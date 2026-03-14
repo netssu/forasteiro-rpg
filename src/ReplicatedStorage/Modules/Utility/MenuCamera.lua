@@ -17,6 +17,7 @@ local HOVER_SWAY_SPEED: number = 0.6
 local MenuCamera = {}
 local player: Player = Players.LocalPlayer
 local menuCameraHoverStartTime: number = 0
+local isMenuCameraBound: boolean = false
 
 ------------------//FUNCTIONS
 local function get_current_camera(): Camera
@@ -79,7 +80,11 @@ function MenuCamera.enable(): ()
 	blur.Size = MENU_BLUR_SIZE
 	menuCameraHoverStartTime = time()
 
-	RunService:BindToRenderStep(MENU_CAMERA_BIND_NAME, Enum.RenderPriority.Camera.Value + 1, update_menu_camera)
+	if not isMenuCameraBound then
+		RunService:BindToRenderStep(MENU_CAMERA_BIND_NAME, Enum.RenderPriority.Camera.Value + 1, update_menu_camera)
+		isMenuCameraBound = true
+	end
+
 	update_menu_camera()
 end
 
@@ -88,7 +93,10 @@ function MenuCamera.disable(): ()
 	if blur and blur:IsA("BlurEffect") then
 		blur.Enabled = false
 	end
-	RunService:UnbindFromRenderStep(MENU_CAMERA_BIND_NAME)
+	if isMenuCameraBound then
+		RunService:UnbindFromRenderStep(MENU_CAMERA_BIND_NAME)
+		isMenuCameraBound = false
+	end
 end
 
 return MenuCamera

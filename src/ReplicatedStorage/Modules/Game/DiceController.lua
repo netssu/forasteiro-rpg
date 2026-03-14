@@ -160,7 +160,7 @@ local function animate_local_physics_dice(rolls: {number}, detailString: string)
 				indLabel.Size = UDim2.new(1, 0, 1, 0)
 				indLabel.BackgroundTransparency = 1
 				indLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-				indLabel.FontFace = Font.fromId(DiceDictionary.DICE_FONT_ID, Enum.FontWeight.Bold)
+				indLabel.FontFace = Font.fromEnum(DiceDictionary.DICE_FONT)
 				indLabel.TextSize = 0
 				indLabel.Text = tostring(diceObj.RollValue)
 
@@ -200,7 +200,7 @@ local function animate_local_physics_dice(rolls: {number}, detailString: string)
 			label.Size = UDim2.new(1, 0, 1, 0)
 			label.BackgroundTransparency = 1
 			label.TextColor3 = Color3.fromRGB(255, 220, 80)
-			label.FontFace = Font.fromId(DiceDictionary.DICE_FONT_ID, Enum.FontWeight.Bold)
+			label.FontFace = Font.fromEnum(DiceDictionary.DICE_FONT)
 			label.TextSize = 0
 			label.Text = detailString
 
@@ -301,7 +301,7 @@ local function animate_world_dice(character: Model, detailString: string): ()
 				label.Size = UDim2.new(1, 0, 1, 0)
 				label.BackgroundTransparency = 1
 				label.TextColor3 = Color3.fromRGB(255, 255, 255)
-				label.FontFace = Font.fromId(DiceDictionary.DICE_FONT_ID, Enum.FontWeight.Bold)
+				label.FontFace = Font.fromEnum(DiceDictionary.DICE_FONT)
 				label.TextSize = 48
 				label.Text = detailString
 
