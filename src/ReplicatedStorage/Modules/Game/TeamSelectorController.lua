@@ -63,12 +63,7 @@ local function select_team(teamName: string): ()
 	isTransitionPlaying = true
 
 	task.spawn(function()
-		local container: GuiObject? = nil
-		local screamGui = playerGui:FindFirstChild("screamGui")
-
-		if screamGui and screamGui:IsA("ScreenGui") then
-			container = screamGui:FindFirstChild("BothUI") :: GuiObject?
-		end
+		local container: GuiObject? = playerGui:FindFirstChild("BothUI")
 
 		if not container then
 			container = mainFrame
