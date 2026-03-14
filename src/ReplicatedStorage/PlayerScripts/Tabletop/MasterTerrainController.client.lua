@@ -8,10 +8,51 @@ local MASTER_TEAM_NAME: string = "Mestre"
 local GUI_NAME: string = "MasterGui"
 local REMOTE_NAME: string = "MasterBuildEvent"
 
+local TOP_BAR_NAME: string = "TopBar"
+
 local TERRAIN_TOGGLE_BUTTON_NAME: string = "TerrainToggleButton"
 local TERRAIN_WINDOW_NAME: string = "TerrainWindow"
 
+local BIOME_FRAME_NAME: string = "BiomeFrame"
+local WIDTH_FRAME_NAME: string = "WidthFrame"
+local MATERIAL_FRAME_NAME: string = "MaterialFrame"
+local COLORS_FRAME_NAME: string = "ColorsFrame"
+
+local BRIGHTNESS_VALUE_LABEL_NAME: string = "BrightnessValueLabel"
+local BRIGHTNESS_TRACK_NAME: string = "BrightnessTrack"
+local BRIGHTNESS_FILL_NAME: string = "BrightnessFill"
+
+local MATERIAL_LABEL_NAME: string = "MaterialLabel"
+local MATERIAL_PREV_BUTTON_NAME: string = "MaterialPrevButton"
+local MATERIAL_NEXT_BUTTON_NAME: string = "MaterialNextButton"
+
+local DETAIL_TOGGLE_BUTTON_NAME: string = "DetailToggleButton"
+local BASEPLATE_TOGGLE_BUTTON_NAME: string = "BaseplateToggleButton"
+local APPLY_BUTTON_NAME: string = "ApplyTerrainButton"
+local RESET_BUTTON_NAME: string = "ResetTerrainButton"
+
 local TERRAIN_CENTER: Vector3 = Vector3.new(0, 0, 0)
+
+local BIOME_ORDER = {"Arctic", "Dunes", "Canyons", "Lavascape", "Water", "Mountains", "Hills", "Plains", "Marsh"}
+local WIDTH_OPTIONS = {192, 256, 320, 384, 448, 512}
+local COLOR_PRESETS = {
+	Color3.fromRGB(94, 132, 76),
+	Color3.fromRGB(143, 122, 86),
+	Color3.fromRGB(84, 122, 161),
+	Color3.fromRGB(110, 95, 83),
+	Color3.fromRGB(164, 151, 116),
+	Color3.fromRGB(120, 129, 132),
+}
+local MATERIAL_OPTIONS = {
+	Enum.Material.Grass,
+	Enum.Material.Ground,
+	Enum.Material.Mud,
+	Enum.Material.Sand,
+	Enum.Material.Rock,
+	Enum.Material.Slate,
+	Enum.Material.Snow,
+	Enum.Material.Ice,
+}
 
 ------------------//VARIABLES
 local player: Player = Players.LocalPlayer
@@ -78,31 +119,10 @@ local biomeConfigs = {
 	},
 }
 
-local biomeOrder = {"Arctic", "Dunes", "Canyons", "Lavascape", "Water", "Mountains", "Hills", "Plains", "Marsh"}
-local widthOptions = {192, 256, 320, 384, 448, 512}
-local colorPresets = {
-	Color3.fromRGB(94, 132, 76),
-	Color3.fromRGB(143, 122, 86),
-	Color3.fromRGB(84, 122, 161),
-	Color3.fromRGB(110, 95, 83),
-	Color3.fromRGB(164, 151, 116),
-	Color3.fromRGB(120, 129, 132),
-}
-local materialOptions = {
-	Enum.Material.Grass,
-	Enum.Material.Ground,
-	Enum.Material.Mud,
-	Enum.Material.Sand,
-	Enum.Material.Rock,
-	Enum.Material.Slate,
-	Enum.Material.Snow,
-	Enum.Material.Ice,
-}
-
 local state = {
 	SelectedBiome = "Marsh",
 	SelectedWidth = 240,
-	SelectedColor = colorPresets[1],
+	SelectedColor = COLOR_PRESETS[1],
 	SelectedMaterial = Enum.Material.Mud,
 	Brightness = 1,
 	UseDetailLayer = true,
@@ -110,65 +130,32 @@ local state = {
 }
 
 local uiRefs = {
+	MasterGui = nil,
+	TopBar = nil,
 	Window = nil,
 	ToggleButton = nil,
 	BiomeChecks = {},
 	WidthButtons = {},
 	ColorButtons = {},
+	BrightnessTrack = nil,
 	BrightnessFill = nil,
 	BrightnessValue = nil,
 	MaterialLabel = nil,
+	MaterialPrevButton = nil,
+	MaterialNextButton = nil,
 	DetailToggle = nil,
 	BaseplateToggle = nil,
+	ApplyButton = nil,
+	ResetButton = nil,
 }
+
+local materialIndex: number = 1
+local brightnessDragging: boolean = false
+local boundGui: ScreenGui? = nil
 
 ------------------//FUNCTIONS
 local function is_master(): boolean
 	return player.Team ~= nil and player.Team.Name == MASTER_TEAM_NAME
-end
-
-local function create_corner(parent: Instance, radius: number): ()
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, radius)
-	corner.Parent = parent
-end
-
-local function create_stroke(parent: Instance, thickness: number, transparency: number): ()
-	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = thickness
-	stroke.Transparency = transparency
-	stroke.Parent = parent
-end
-
-local function create_label(parent: Instance, text: string, pos: UDim2, size: UDim2, textSize: number?): TextLabel
-	local label = Instance.new("TextLabel")
-	label.BackgroundTransparency = 1
-	label.Font = Enum.Font.GothamMedium
-	label.TextColor3 = Color3.fromRGB(230, 230, 230)
-	label.TextXAlignment = Enum.TextXAlignment.Left
-	label.Text = text
-	label.TextSize = textSize or 13
-	label.Position = pos
-	label.Size = size
-	label.Parent = parent
-	return label
-end
-
-local function create_button(parent: Instance, text: string, pos: UDim2, size: UDim2): TextButton
-	local button = Instance.new("TextButton")
-	button.BackgroundColor3 = Color3.fromRGB(36, 40, 53)
-	button.BorderSizePixel = 0
-	button.TextColor3 = Color3.fromRGB(240, 240, 240)
-	button.Font = Enum.Font.GothamBold
-	button.TextSize = 12
-	button.Text = text
-	button.Position = pos
-	button.Size = size
-	button.AutoButtonColor = true
-	button.Parent = parent
-	create_corner(button, 8)
-	create_stroke(button, 1, 0.72)
-	return button
 end
 
 local function fire_build(action: string, payload: {[string]: any}): ()
@@ -216,11 +203,12 @@ local function refresh_selection_visuals(): ()
 		button.BackgroundColor3 = state.SelectedWidth == widthValue and Color3.fromRGB(69, 114, 84) or Color3.fromRGB(36, 40, 53)
 	end
 
-	for colorValue, button in uiRefs.ColorButtons do
-		button.BackgroundColor3 = colorValue
+	for index, button in uiRefs.ColorButtons do
+		button.BackgroundColor3 = COLOR_PRESETS[index]
+
 		local stroke = button:FindFirstChildOfClass("UIStroke")
 		if stroke then
-			stroke.Transparency = (state.SelectedColor == colorValue) and 0.1 or 0.6
+			stroke.Transparency = state.SelectedColor == COLOR_PRESETS[index] and 0.1 or 0.6
 		end
 	end
 
@@ -241,265 +229,236 @@ local function refresh_selection_visuals(): ()
 	if uiRefs.BaseplateToggle then
 		uiRefs.BaseplateToggle.Text = state.HideBaseplate and "Ocultar baseplate: ON" or "Ocultar baseplate: OFF"
 	end
-end
 
-local function build_brightness_slider(parent: Instance): ()
-	create_label(parent, "Brightness", UDim2.fromOffset(16, 310), UDim2.fromOffset(120, 20))
-	local valueLabel = create_label(parent, "1.00x", UDim2.fromOffset(326, 310), UDim2.fromOffset(62, 20))
-	valueLabel.TextXAlignment = Enum.TextXAlignment.Right
-	uiRefs.BrightnessValue = valueLabel
-
-	local track = Instance.new("Frame")
-	track.Position = UDim2.fromOffset(16, 334)
-	track.Size = UDim2.fromOffset(372, 16)
-	track.BackgroundColor3 = Color3.fromRGB(28, 31, 40)
-	track.BorderSizePixel = 0
-	track.Parent = parent
-	create_corner(track, 8)
-	create_stroke(track, 1, 0.6)
-
-	local fill = Instance.new("Frame")
-	fill.Size = UDim2.fromScale(0.5, 1)
-	fill.BackgroundColor3 = Color3.fromRGB(91, 157, 119)
-	fill.BorderSizePixel = 0
-	fill.Parent = track
-	create_corner(fill, 8)
-	uiRefs.BrightnessFill = fill
-
-	local dragging = false
-	local function update_from_x(mouseX: number)
-		local pct = math.clamp((mouseX - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
-		state.Brightness = 0.4 + (1.2 * pct)
-		refresh_selection_visuals()
+	if uiRefs.ToggleButton then
+		uiRefs.ToggleButton.Visible = is_master()
 	end
 
-	track.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			dragging = true
-			update_from_x(input.Position.X)
-		end
-	end)
-
-	track.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			dragging = false
-		end
-	end)
-
-	UserInputService.InputChanged:Connect(function(input)
-		if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-			update_from_x(input.Position.X)
-		end
-	end)
+	if uiRefs.Window and not is_master() then
+		uiRefs.Window.Visible = false
+	end
 end
 
-local function build_terrain_ui(masterGui: ScreenGui): ()
-	local topBar = masterGui:FindFirstChild("TopBar")
-	if not topBar or not topBar:IsA("Frame") then
+local function update_brightness_from_x(mouseX: number): ()
+	if not uiRefs.BrightnessTrack then
 		return
 	end
 
-	local existingToggle = topBar:FindFirstChild(TERRAIN_TOGGLE_BUTTON_NAME)
-	if existingToggle then
-		existingToggle:Destroy()
-	end
+	local track = uiRefs.BrightnessTrack
+	local pct = math.clamp((mouseX - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
+	state.Brightness = 0.4 + (1.2 * pct)
+	refresh_selection_visuals()
+end
 
-	local toggle = create_button(topBar, "Terreno", UDim2.fromOffset(548, 6), UDim2.fromOffset(90, 32))
-	toggle.Name = TERRAIN_TOGGLE_BUTTON_NAME
-	uiRefs.ToggleButton = toggle
-
-	local existingWindow = masterGui:FindFirstChild(TERRAIN_WINDOW_NAME)
-	if existingWindow then
-		existingWindow:Destroy()
-	end
-
-	local window = Instance.new("Frame")
-	window.Name = TERRAIN_WINDOW_NAME
-	window.Visible = false
-	window.Size = UDim2.fromOffset(410, 610)
-	window.Position = UDim2.fromOffset(16, 66)
-	window.BackgroundColor3 = Color3.fromRGB(18, 20, 27)
-	window.BorderSizePixel = 0
-	window.Parent = masterGui
-	create_corner(window, 12)
-	create_stroke(window, 1, 0.6)
-	uiRefs.Window = window
-
-	create_label(window, "Terreno / Bioma", UDim2.fromOffset(16, 10), UDim2.fromOffset(250, 24), 15)
-
-	local biomeFrame = Instance.new("Frame")
-	biomeFrame.Position = UDim2.fromOffset(16, 40)
-	biomeFrame.Size = UDim2.fromOffset(180, 250)
-	biomeFrame.BackgroundColor3 = Color3.fromRGB(25, 27, 34)
-	biomeFrame.BorderSizePixel = 0
-	biomeFrame.Parent = window
-	create_corner(biomeFrame, 10)
-	create_stroke(biomeFrame, 1, 0.7)
-
-	create_label(biomeFrame, "Biomes", UDim2.fromOffset(10, 8), UDim2.fromOffset(120, 20))
-
-	for index, biomeName in biomeOrder do
-		local rowY = 30 + ((index - 1) * 24)
-		local check = create_button(biomeFrame, "☐", UDim2.fromOffset(10, rowY), UDim2.fromOffset(22, 22))
-		check.TextSize = 16
-		local label = create_label(biomeFrame, biomeName, UDim2.fromOffset(40, rowY + 1), UDim2.fromOffset(130, 20), 14)
-		label.TextColor3 = Color3.fromRGB(225, 225, 225)
-
-		check.MouseButton1Click:Connect(function()
-			state.SelectedBiome = biomeName
-			local biome = get_biome_config()
-			state.SelectedMaterial = biome.Material
-			state.SelectedColor = biome.Color
-			refresh_selection_visuals()
-		end)
-
-		uiRefs.BiomeChecks[biomeName] = check
-	end
-
-	local widthFrame = Instance.new("Frame")
-	widthFrame.Position = UDim2.fromOffset(210, 40)
-	widthFrame.Size = UDim2.fromOffset(184, 132)
-	widthFrame.BackgroundColor3 = Color3.fromRGB(25, 27, 34)
-	widthFrame.BorderSizePixel = 0
-	widthFrame.Parent = window
-	create_corner(widthFrame, 10)
-	create_stroke(widthFrame, 1, 0.7)
-	create_label(widthFrame, "Largura predefinida", UDim2.fromOffset(10, 8), UDim2.fromOffset(150, 20))
-
-	for index, widthValue in widthOptions do
-		local col = (index - 1) % 2
-		local row = math.floor((index - 1) / 2)
-		local btn = create_button(widthFrame, tostring(widthValue), UDim2.fromOffset(10 + (col * 86), 36 + (row * 38)), UDim2.fromOffset(80, 32))
-		btn.MouseButton1Click:Connect(function()
-			state.SelectedWidth = widthValue
-			refresh_selection_visuals()
-		end)
-		uiRefs.WidthButtons[widthValue] = btn
-	end
-
-	local materialFrame = Instance.new("Frame")
-	materialFrame.Position = UDim2.fromOffset(210, 186)
-	materialFrame.Size = UDim2.fromOffset(184, 104)
-	materialFrame.BackgroundColor3 = Color3.fromRGB(25, 27, 34)
-	materialFrame.BorderSizePixel = 0
-	materialFrame.Parent = window
-	create_corner(materialFrame, 10)
-	create_stroke(materialFrame, 1, 0.7)
-
-	local materialIndex = 1
-	for i, material in materialOptions do
+local function resolve_material_index(): ()
+	for index, material in MATERIAL_OPTIONS do
 		if material == state.SelectedMaterial then
-			materialIndex = i
-			break
+			materialIndex = index
+			return
 		end
 	end
 
-	local prevMat = create_button(materialFrame, "<", UDim2.fromOffset(10, 38), UDim2.fromOffset(32, 32))
-	local nextMat = create_button(materialFrame, ">", UDim2.fromOffset(142, 38), UDim2.fromOffset(32, 32))
-	local materialLabel = create_label(materialFrame, "Material", UDim2.fromOffset(48, 44), UDim2.fromOffset(88, 20))
-	materialLabel.TextXAlignment = Enum.TextXAlignment.Center
-	materialLabel.TextSize = 12
-	uiRefs.MaterialLabel = materialLabel
+	materialIndex = 1
+end
 
-	prevMat.MouseButton1Click:Connect(function()
-		materialIndex = ((materialIndex - 2) % #materialOptions) + 1
-		state.SelectedMaterial = materialOptions[materialIndex]
-		refresh_selection_visuals()
-	end)
+local function collect_ui_refs(masterGui: ScreenGui): ()
+	uiRefs.MasterGui = masterGui
+	uiRefs.TopBar = masterGui:WaitForChild(TOP_BAR_NAME)
+	uiRefs.Window = masterGui:WaitForChild(TERRAIN_WINDOW_NAME)
+	uiRefs.ToggleButton = uiRefs.TopBar:WaitForChild(TERRAIN_TOGGLE_BUTTON_NAME)
 
-	nextMat.MouseButton1Click:Connect(function()
-		materialIndex = (materialIndex % #materialOptions) + 1
-		state.SelectedMaterial = materialOptions[materialIndex]
-		refresh_selection_visuals()
-	end)
+	local biomeFrame: Frame = uiRefs.Window:WaitForChild(BIOME_FRAME_NAME)
+	local widthFrame: Frame = uiRefs.Window:WaitForChild(WIDTH_FRAME_NAME)
+	local materialFrame: Frame = uiRefs.Window:WaitForChild(MATERIAL_FRAME_NAME)
+	local colorsFrame: Frame = uiRefs.Window:WaitForChild(COLORS_FRAME_NAME)
 
-	local colorsFrame = Instance.new("Frame")
-	colorsFrame.Position = UDim2.fromOffset(16, 356)
-	colorsFrame.Size = UDim2.fromOffset(378, 70)
-	colorsFrame.BackgroundColor3 = Color3.fromRGB(25, 27, 34)
-	colorsFrame.BorderSizePixel = 0
-	colorsFrame.Parent = window
-	create_corner(colorsFrame, 10)
-	create_stroke(colorsFrame, 1, 0.7)
-	create_label(colorsFrame, "Cores base", UDim2.fromOffset(10, 8), UDim2.fromOffset(120, 20))
+	uiRefs.BiomeChecks = {}
+	uiRefs.WidthButtons = {}
+	uiRefs.ColorButtons = {}
 
-	for index, color in colorPresets do
-		local button = create_button(colorsFrame, "", UDim2.fromOffset(10 + ((index - 1) * 60), 34), UDim2.fromOffset(52, 24))
-		button.Text = ""
+	for _, biomeName in BIOME_ORDER do
+		uiRefs.BiomeChecks[biomeName] = biomeFrame:WaitForChild("BiomeCheck_" .. biomeName)
+	end
+
+	for _, widthValue in WIDTH_OPTIONS do
+		uiRefs.WidthButtons[widthValue] = widthFrame:WaitForChild("WidthButton_" .. tostring(widthValue))
+	end
+
+	for index = 1, #COLOR_PRESETS do
+		uiRefs.ColorButtons[index] = colorsFrame:WaitForChild("ColorButton_" .. tostring(index))
+	end
+
+	uiRefs.BrightnessTrack = uiRefs.Window:WaitForChild(BRIGHTNESS_TRACK_NAME)
+	uiRefs.BrightnessFill = uiRefs.BrightnessTrack:WaitForChild(BRIGHTNESS_FILL_NAME)
+	uiRefs.BrightnessValue = uiRefs.Window:WaitForChild(BRIGHTNESS_VALUE_LABEL_NAME)
+
+	uiRefs.MaterialLabel = materialFrame:WaitForChild(MATERIAL_LABEL_NAME)
+	uiRefs.MaterialPrevButton = materialFrame:WaitForChild(MATERIAL_PREV_BUTTON_NAME)
+	uiRefs.MaterialNextButton = materialFrame:WaitForChild(MATERIAL_NEXT_BUTTON_NAME)
+
+	uiRefs.DetailToggle = uiRefs.Window:WaitForChild(DETAIL_TOGGLE_BUTTON_NAME)
+	uiRefs.BaseplateToggle = uiRefs.Window:WaitForChild(BASEPLATE_TOGGLE_BUTTON_NAME)
+	uiRefs.ApplyButton = uiRefs.Window:WaitForChild(APPLY_BUTTON_NAME)
+	uiRefs.ResetButton = uiRefs.Window:WaitForChild(RESET_BUTTON_NAME)
+end
+
+local function connect_biome_buttons(): ()
+	for _, biomeName in BIOME_ORDER do
+		local button = uiRefs.BiomeChecks[biomeName]
+		button.MouseButton1Click:Connect(function()
+			state.SelectedBiome = biomeName
+
+			local biome = get_biome_config()
+			state.SelectedMaterial = biome.Material
+			state.SelectedColor = biome.Color
+
+			resolve_material_index()
+			refresh_selection_visuals()
+		end)
+	end
+end
+
+local function connect_width_buttons(): ()
+	for _, widthValue in WIDTH_OPTIONS do
+		local button = uiRefs.WidthButtons[widthValue]
+		button.MouseButton1Click:Connect(function()
+			state.SelectedWidth = widthValue
+			refresh_selection_visuals()
+		end)
+	end
+end
+
+local function connect_color_buttons(): ()
+	for index = 1, #COLOR_PRESETS do
+		local button = uiRefs.ColorButtons[index]
+		local color = COLOR_PRESETS[index]
+
 		button.MouseButton1Click:Connect(function()
 			state.SelectedColor = color
 			refresh_selection_visuals()
 		end)
-		uiRefs.ColorButtons[color] = button
+	end
+end
+
+local function connect_material_buttons(): ()
+	if not uiRefs.MaterialPrevButton or not uiRefs.MaterialNextButton then
+		return
 	end
 
-	build_brightness_slider(window)
-
-	local detailToggle = create_button(window, "Detalhe: ON", UDim2.fromOffset(16, 430), UDim2.fromOffset(184, 34))
-	detailToggle.MouseButton1Click:Connect(function()
-		state.UseDetailLayer = not state.UseDetailLayer
+	uiRefs.MaterialPrevButton.MouseButton1Click:Connect(function()
+		materialIndex = ((materialIndex - 2) % #MATERIAL_OPTIONS) + 1
+		state.SelectedMaterial = MATERIAL_OPTIONS[materialIndex]
 		refresh_selection_visuals()
 	end)
-	uiRefs.DetailToggle = detailToggle
 
-	local baseplateToggle = create_button(window, "Ocultar baseplate: ON", UDim2.fromOffset(210, 430), UDim2.fromOffset(184, 34))
-	baseplateToggle.MouseButton1Click:Connect(function()
-		state.HideBaseplate = not state.HideBaseplate
+	uiRefs.MaterialNextButton.MouseButton1Click:Connect(function()
+		materialIndex = (materialIndex % #MATERIAL_OPTIONS) + 1
+		state.SelectedMaterial = MATERIAL_OPTIONS[materialIndex]
 		refresh_selection_visuals()
 	end)
-	uiRefs.BaseplateToggle = baseplateToggle
+end
 
-	local applyButton = create_button(window, "Aplicar terreno", UDim2.fromOffset(16, 482), UDim2.fromOffset(378, 42))
-	applyButton.BackgroundColor3 = Color3.fromRGB(57, 109, 76)
-	applyButton.MouseButton1Click:Connect(apply_terrain)
+local function connect_brightness_slider(): ()
+	if not uiRefs.BrightnessTrack then
+		return
+	end
 
-	local resetButton = create_button(window, "Voltar ao normal", UDim2.fromOffset(16, 534), UDim2.fromOffset(378, 42))
-	resetButton.BackgroundColor3 = Color3.fromRGB(88, 62, 62)
-	resetButton.MouseButton1Click:Connect(restore_default_world)
-
-	toggle.MouseButton1Click:Connect(function()
-		if not uiRefs.Window then
-			return
+	uiRefs.BrightnessTrack.InputBegan:Connect(function(input: InputObject)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			brightnessDragging = true
+			update_brightness_from_x(input.Position.X)
 		end
-		uiRefs.Window.Visible = not uiRefs.Window.Visible
 	end)
+
+	uiRefs.BrightnessTrack.InputEnded:Connect(function(input: InputObject)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			brightnessDragging = false
+		end
+	end)
+end
+
+local function connect_main_buttons(): ()
+	if uiRefs.ToggleButton then
+		uiRefs.ToggleButton.MouseButton1Click:Connect(function()
+			if not uiRefs.Window or not is_master() then
+				return
+			end
+
+			uiRefs.Window.Visible = not uiRefs.Window.Visible
+		end)
+	end
+
+	if uiRefs.DetailToggle then
+		uiRefs.DetailToggle.MouseButton1Click:Connect(function()
+			state.UseDetailLayer = not state.UseDetailLayer
+			refresh_selection_visuals()
+		end)
+	end
+
+	if uiRefs.BaseplateToggle then
+		uiRefs.BaseplateToggle.MouseButton1Click:Connect(function()
+			state.HideBaseplate = not state.HideBaseplate
+			refresh_selection_visuals()
+		end)
+	end
+
+	if uiRefs.ApplyButton then
+		uiRefs.ApplyButton.MouseButton1Click:Connect(apply_terrain)
+	end
+
+	if uiRefs.ResetButton then
+		uiRefs.ResetButton.MouseButton1Click:Connect(restore_default_world)
+	end
+end
+
+local function bind_gui(masterGui: ScreenGui): ()
+	if boundGui == masterGui then
+		return
+	end
+
+	boundGui = masterGui
+
+	collect_ui_refs(masterGui)
+	resolve_material_index()
+
+	connect_biome_buttons()
+	connect_width_buttons()
+	connect_color_buttons()
+	connect_material_buttons()
+	connect_brightness_slider()
+	connect_main_buttons()
 
 	refresh_selection_visuals()
 end
 
-local function try_setup_gui(): ()
+local function try_bind_gui(): ()
 	local masterGui = playerGui:FindFirstChild(GUI_NAME)
 	if not masterGui or not masterGui:IsA("ScreenGui") then
 		return
 	end
 
-	local topBar = masterGui:FindFirstChild("TopBar")
-	if masterGui:FindFirstChild(TERRAIN_WINDOW_NAME) and topBar and topBar:FindFirstChild(TERRAIN_TOGGLE_BUTTON_NAME) then
-		return
-	end
-
-	build_terrain_ui(masterGui)
+	bind_gui(masterGui)
 end
 
-playerGui.ChildAdded:Connect(function(child)
-	if child.Name == GUI_NAME then
-		task.defer(try_setup_gui)
+------------------//MAIN FUNCTIONS
+UserInputService.InputChanged:Connect(function(input: InputObject)
+	if brightnessDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+		update_brightness_from_x(input.Position.X)
+	end
+end)
+
+playerGui.ChildAdded:Connect(function(child: Instance)
+	if child.Name == GUI_NAME and child:IsA("ScreenGui") then
+		task.defer(try_bind_gui)
 	end
 end)
 
 player:GetPropertyChangedSignal("Team"):Connect(function()
-	if uiRefs.Window then
-		uiRefs.Window.Visible = false
-	end
-
-	if uiRefs.ToggleButton then
-		uiRefs.ToggleButton.Visible = is_master()
-	end
+	refresh_selection_visuals()
 end)
 
+------------------//INIT
 task.defer(function()
-	try_setup_gui()
-	if uiRefs.ToggleButton then
-		uiRefs.ToggleButton.Visible = is_master()
-	end
+	try_bind_gui()
+	refresh_selection_visuals()
 end)
