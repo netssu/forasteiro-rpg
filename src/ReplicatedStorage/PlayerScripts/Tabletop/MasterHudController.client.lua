@@ -295,7 +295,7 @@ local function render_players_list(): ()
 		end
 
 		local row = Instance.new("Frame")
-		row.Size = UDim2.new(1, -8, 0, 148)
+		row.Size = UDim2.new(1, -8, 0, 154)
 		row.BackgroundColor3 = Color3.fromRGB(26, 28, 34)
 		row.BorderSizePixel = 0
 		row.Parent = playersList
@@ -305,8 +305,8 @@ local function render_players_list(): ()
 
 		local nameLabel = Instance.new("TextLabel")
 		nameLabel.BackgroundTransparency = 1
-		nameLabel.Position = UDim2.fromOffset(10, 6)
-		nameLabel.Size = UDim2.new(1, -20, 0, 18)
+		nameLabel.Position = UDim2.fromOffset(12, 8)
+		nameLabel.Size = UDim2.new(1, -24, 0, 18)
 		nameLabel.Font = Enum.Font.GothamBold
 		nameLabel.Text = charData.Label .. " [" .. (charData.RoleName ~= "" and charData.RoleName or "NPC") .. "]"
 		nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -316,8 +316,8 @@ local function render_players_list(): ()
 
 		local stateLabel = Instance.new("TextLabel")
 		stateLabel.BackgroundTransparency = 1
-		stateLabel.Position = UDim2.fromOffset(10, 26)
-		stateLabel.Size = UDim2.new(1, -20, 0, 16)
+		stateLabel.Position = UDim2.fromOffset(12, 30)
+		stateLabel.Size = UDim2.new(1, -24, 0, 16)
 		stateLabel.Font = Enum.Font.GothamMedium
 		stateLabel.Text = charData.MovementLocked and "Movimento: Travado" or "Movimento: Livre"
 		stateLabel.TextColor3 = charData.MovementLocked and Color3.fromRGB(255, 170, 170) or Color3.fromRGB(170, 255, 170)
@@ -327,19 +327,19 @@ local function render_players_list(): ()
 
 		local hpLabel = Instance.new("TextLabel")
 		hpLabel.BackgroundTransparency = 1
-		hpLabel.Position = UDim2.fromOffset(10, 48)
-		hpLabel.Size = UDim2.fromOffset(26, 24)
+		hpLabel.Position = UDim2.fromOffset(12, 58)
+		hpLabel.Size = UDim2.fromOffset(28, 24)
 		hpLabel.Font = Enum.Font.GothamBold
 		hpLabel.Text = "HP"
 		hpLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 		hpLabel.TextSize = 12
 		hpLabel.Parent = row
 
-		local currentBox = create_text_box(row, tostring(math.floor(charData.CurrentHealth + 0.5)), UDim2.fromOffset(56, 24), UDim2.fromOffset(40, 48))
+		local currentBox = create_text_box(row, tostring(math.floor(charData.CurrentHealth + 0.5)), UDim2.fromOffset(60, 24), UDim2.fromOffset(44, 58))
 
 		local slashLabel = Instance.new("TextLabel")
 		slashLabel.BackgroundTransparency = 1
-		slashLabel.Position = UDim2.fromOffset(101, 48)
+		slashLabel.Position = UDim2.fromOffset(110, 58)
 		slashLabel.Size = UDim2.fromOffset(14, 24)
 		slashLabel.Font = Enum.Font.GothamBold
 		slashLabel.Text = "/"
@@ -347,24 +347,24 @@ local function render_players_list(): ()
 		slashLabel.TextSize = 12
 		slashLabel.Parent = row
 
-		local maxBox = create_text_box(row, tostring(math.floor(charData.MaxHealth + 0.5)), UDim2.fromOffset(56, 24), UDim2.fromOffset(118, 48))
-		local applyButton = create_text_button(row, "Aplicar", UDim2.fromOffset(70, 24), UDim2.fromOffset(182, 48))
-		local lockButton = create_text_button(row, charData.ManualMovementLocked and "Desbloq." or "Bloquear", UDim2.fromOffset(84, 24), UDim2.fromOffset(262, 48))
-		local addTurnButton = create_text_button(row, "Add Turno", UDim2.fromOffset(88, 24), UDim2.fromOffset(354, 48))
+		local maxBox = create_text_box(row, tostring(math.floor(charData.MaxHealth + 0.5)), UDim2.fromOffset(60, 24), UDim2.fromOffset(124, 58))
+		local applyButton = create_text_button(row, "Aplicar", UDim2.fromOffset(76, 24), UDim2.fromOffset(194, 58))
+		local lockButton = create_text_button(row, charData.ManualMovementLocked and "Desbloq." or "Bloquear", UDim2.fromOffset(92, 24), UDim2.fromOffset(278, 58))
+		local addTurnButton = create_text_button(row, "Add Turno", UDim2.fromOffset(94, 24), UDim2.fromOffset(378, 58))
 
 		local imageLabel = Instance.new("TextLabel")
 		imageLabel.BackgroundTransparency = 1
-		imageLabel.Position = UDim2.fromOffset(10, 82)
-		imageLabel.Size = UDim2.fromOffset(46, 24)
+		imageLabel.Position = UDim2.fromOffset(12, 92)
+		imageLabel.Size = UDim2.fromOffset(34, 24)
 		imageLabel.Font = Enum.Font.GothamBold
 		imageLabel.Text = "IMG"
 		imageLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 		imageLabel.TextSize = 12
 		imageLabel.Parent = row
 
-		local imageIdBox = create_text_box(row, get_character_image_id(charData.Character), UDim2.fromOffset(240, 24), UDim2.fromOffset(52, 82))
-		local applyImageButton = create_text_button(row, "Setar", UDim2.fromOffset(70, 24), UDim2.fromOffset(300, 82))
-		local teleportToPlayerButton = create_text_button(row, "Ir até", UDim2.fromOffset(70, 24), UDim2.fromOffset(378, 82))
+		local imageIdBox = create_text_box(row, get_character_image_id(charData.Character), UDim2.new(1, -220, 0, 24), UDim2.fromOffset(50, 92))
+		local applyImageButton = create_text_button(row, "Setar", UDim2.fromOffset(70, 24), UDim2.new(1, -162, 0, 92))
+		local teleportToPlayerButton = create_text_button(row, "Ir até", UDim2.fromOffset(70, 24), UDim2.new(1, -84, 0, 92))
 
 		applyButton.MouseButton1Click:Connect(function()
 			local currentHealth = sanitize_number(currentBox.Text)
