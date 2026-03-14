@@ -16,7 +16,7 @@ local HOVER_SWAY_SPEED: number = 0.6
 ------------------//VARIABLES
 local MenuCamera = {}
 local player: Player = Players.LocalPlayer
-local hoverStartTime: number = 0
+local menuCameraHoverStartTime: number = 0
 
 ------------------//FUNCTIONS
 local function get_current_camera(): Camera
@@ -40,6 +40,22 @@ local function get_menu_camera_cframe(): CFrame
 	return CFrame.new(0, 60, 0) * CFrame.Angles(math.rad(-90), 0, 0)
 end
 
+local function get_or_create_blur(): BlurEffect
+	local blur = Lighting:FindFirstChild(BLUR_NAME)
+
+	if blur and blur:IsA("BlurEffect") then
+		return blur
+	end
+
+	local newBlur = Instance.new("BlurEffect")
+	newBlur.Name = BLUR_NAME
+	newBlur.Enabled = false
+	newBlur.Size = MENU_BLUR_SIZE
+	newBlur.Parent = Lighting
+
+	return newBlur
+end
+
 local function update_menu_camera(): ()
 	if player.Team then
 		return
@@ -47,7 +63,7 @@ local function update_menu_camera(): ()
 
 	local currentCamera = get_current_camera()
 	local baseCameraCFrame = get_menu_camera_cframe()
-	local elapsed = time() - hoverStartTime
+	local elapsed = time() - menuCameraHoverStartTime
 	local bobOffset = math.sin(elapsed * math.pi * 2 * HOVER_SPEED) * HOVER_HEIGHT
 	local sway = math.sin(elapsed * math.pi * 2 * HOVER_SWAY_SPEED) * HOVER_SWAY_ANGLE
 	local cameraCFrame = baseCameraCFrame * CFrame.new(0, bobOffset, 0) * CFrame.Angles(0, sway, 0)
@@ -58,18 +74,20 @@ local function update_menu_camera(): ()
 end
 
 function MenuCamera.enable(): ()
-	local blur = Lighting:WaitForChild(BLUR_NAME) :: BlurEffect
+	local blur = get_or_create_blur()
 	blur.Enabled = true
 	blur.Size = MENU_BLUR_SIZE
-	hoverStartTime = time()
+	menuCameraHoverStartTime = time()
 
 	RunService:BindToRenderStep(MENU_CAMERA_BIND_NAME, Enum.RenderPriority.Camera.Value + 1, update_menu_camera)
 	update_menu_camera()
 end
 
 function MenuCamera.disable(): ()
-	local blur = Lighting:WaitForChild(BLUR_NAME) :: BlurEffect
-	blur.Enabled = false
+	local blur = Lighting:FindFirstChild(BLUR_NAME)
+	if blur and blur:IsA("BlurEffect") then
+		blur.Enabled = false
+	end
 	RunService:UnbindFromRenderStep(MENU_CAMERA_BIND_NAME)
 end
 
