@@ -78,26 +78,14 @@ local function update_scroll_canvas(list: ScrollingFrame): ()
 	list.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 8)
 end
 
-local function ensure_prefab_grid_layout(itemList: ScrollingFrame): UIGridLayout
+local function get_prefab_grid_layout(itemList: ScrollingFrame): UIGridLayout?
 	local existing = itemList:FindFirstChildOfClass("UIGridLayout")
 	if existing then
 		return existing
 	end
 
-	local listLayout = itemList:FindFirstChildOfClass("UIListLayout")
-	if listLayout then
-		listLayout:Destroy()
-	end
-
-	local grid = Instance.new("UIGridLayout")
-	grid.CellPadding = UDim2.new(0, 8, 0, 8)
-	grid.SortOrder = Enum.SortOrder.LayoutOrder
-	grid.FillDirection = Enum.FillDirection.Horizontal
-	grid.FillDirectionMaxCells = 3
-	grid.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	grid.VerticalAlignment = Enum.VerticalAlignment.Top
-	grid.Parent = itemList
-	return grid
+	warn("[MasterPrefabController] UIGridLayout ausente em PrefabWindow.Body.ItemList")
+	return nil
 end
 
 local function get_prefab_bounds(prefab: Instance): (CFrame, Vector3)
@@ -549,7 +537,11 @@ local function populate_prefab_list(window: GuiObject, categoryName: string): ()
 	end
 
 	clear_container(itemList)
-	local gridLayout = ensure_prefab_grid_layout(itemList)
+	local gridLayout = get_prefab_grid_layout(itemList)
+	if not gridLayout then
+		return
+	end
+
 	gridLayout.CellSize = UDim2.new((1 / 3), -10, 0, 108)
 	if selectedItemButton then
 		selectedItemButton = nil

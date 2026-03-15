@@ -19,6 +19,9 @@ local ORDER_ROW_HEIGHT: number = 42
 local ORDER_ROW_PADDING: number = 6
 local ORDER_ROW_SIZE: number = ORDER_ROW_HEIGHT + ORDER_ROW_PADDING
 
+local PLAYERS_ROW_TEMPLATE_NAME: string = "PlayersListRowTemplate"
+local ORDER_ROW_TEMPLATE_NAME: string = "OrderRowTemplate"
+
 ------------------//VARIABLES
 local player: Player = Players.LocalPlayer
 local playerGui: PlayerGui = player:WaitForChild("PlayerGui")
@@ -120,7 +123,7 @@ local function clear_players_children(): ()
 	end
 
 	for _, child in playersList:GetChildren() do
-		if not child:IsA("UIListLayout") and not child:IsA("UIPadding") then
+		if child.Name ~= PLAYERS_ROW_TEMPLATE_NAME and not child:IsA("UIListLayout") and not child:IsA("UIPadding") then
 			child:Destroy()
 		end
 	end
@@ -132,59 +135,46 @@ local function clear_order_children(): ()
 	end
 
 	for _, child in orderList:GetChildren() do
-		child:Destroy()
+		if child.Name ~= ORDER_ROW_TEMPLATE_NAME and not child:IsA("UIListLayout") and not child:IsA("UIPadding") then
+			child:Destroy()
+		end
 	end
 end
 
-local function create_corner(parent: Instance, radius: number): ()
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, radius)
-	corner.Parent = parent
+local function clone_players_row_template(): Frame?
+	if not playersList then
+		return nil
+	end
+
+	local template = playersList:FindFirstChild(PLAYERS_ROW_TEMPLATE_NAME)
+	if not template or not template:IsA("Frame") then
+		warn("[MasterHudController] Template de player ausente em PlayersList")
+		return nil
+	end
+
+	local row = template:Clone()
+	row.Name = "PlayerRow"
+	row.Visible = true
+	row.Parent = playersList
+	return row
 end
 
-local function create_stroke(parent: Instance, thickness: number, transparency: number): ()
-	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = thickness
-	stroke.Transparency = transparency
-	stroke.Parent = parent
-end
+local function clone_order_row_template(): Frame?
+	if not orderList then
+		return nil
+	end
 
-local function create_text_button(parent: Instance, text: string, size: UDim2, position: UDim2): TextButton
-	local button = Instance.new("TextButton")
-	button.Size = size
-	button.Position = position
-	button.BackgroundColor3 = Color3.fromRGB(34, 36, 44)
-	button.BorderSizePixel = 0
-	button.Font = Enum.Font.GothamBold
-	button.Text = text
-	button.TextColor3 = Color3.fromRGB(255, 255, 255)
-	button.TextSize = 13
-	button.AutoButtonColor = true
-	button.Parent = parent
+	local template = orderList:FindFirstChild(ORDER_ROW_TEMPLATE_NAME)
+	if not template or not template:IsA("Frame") then
+		warn("[MasterHudController] Template de ordem ausente em OrderList")
+		return nil
+	end
 
-	create_corner(button, 10)
-	create_stroke(button, 1, 0.75)
-
-	return button
-end
-
-local function create_text_box(parent: Instance, text: string, size: UDim2, position: UDim2): TextBox
-	local textBox = Instance.new("TextBox")
-	textBox.Size = size
-	textBox.Position = position
-	textBox.BackgroundColor3 = Color3.fromRGB(24, 25, 32)
-	textBox.BorderSizePixel = 0
-	textBox.ClearTextOnFocus = false
-	textBox.Font = Enum.Font.GothamMedium
-	textBox.Text = text
-	textBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-	textBox.TextSize = 13
-	textBox.Parent = parent
-
-	create_corner(textBox, 8)
-	create_stroke(textBox, 1, 0.8)
-
-	return textBox
+	local row = template:Clone()
+	row.Name = "OrderRow"
+	row.Visible = true
+	row.Parent = orderList
+	return row
 end
 
 local function cache_gui_objects(): ()
@@ -294,80 +284,64 @@ local function render_players_list(): ()
 	clear_players_children()
 
 	for _, charData in cachedSnapshot.Characters do
-		-- Pula a criação da interface se o personagem for um NPC
 		if charData.Character and charData.Character:GetAttribute("IsNPC") then
 			continue
 		end
 
-		local row = Instance.new("Frame")
-		row.Size = UDim2.new(1, -8, 0, 136)
-		row.BackgroundColor3 = Color3.fromRGB(26, 28, 34)
-		row.BorderSizePixel = 0
-		row.Parent = playersList
+		local row = clone_players_row_template()
+		if not row then
+			continue
+		end
 
-		create_corner(row, 10)
-		create_stroke(row, 1, 0.8)
+		local nameLabel = row:FindFirstChild("NameLabel")
+		local stateLabel = row:FindFirstChild("StateLabel")
+		local currentBox = row:FindFirstChild("CurrentHealthBox")
+		local maxBox = row:FindFirstChild("MaxHealthBox")
+		local teleportToPlayerButton = row:FindFirstChild("TeleportButton")
+		local lockButton = row:FindFirstChild("LockButton")
+		local addTurnButton = row:FindFirstChild("AddTurnButton")
+		local imageIdBox = row:FindFirstChild("ImageIdBox")
 
-		local nameLabel = Instance.new("TextLabel")
-		nameLabel.BackgroundTransparency = 1
-		nameLabel.Position = UDim2.fromOffset(174, 8)
-		nameLabel.Size = UDim2.new(1, -186, 0, 18)
-		nameLabel.Font = Enum.Font.GothamBold
+		if not (nameLabel and nameLabel:IsA("TextLabel")) then
+			row:Destroy()
+			continue
+		end
+		if not (stateLabel and stateLabel:IsA("TextLabel")) then
+			row:Destroy()
+			continue
+		end
+		if not (currentBox and currentBox:IsA("TextBox")) then
+			row:Destroy()
+			continue
+		end
+		if not (maxBox and maxBox:IsA("TextBox")) then
+			row:Destroy()
+			continue
+		end
+		if not (teleportToPlayerButton and teleportToPlayerButton:IsA("TextButton")) then
+			row:Destroy()
+			continue
+		end
+		if not (lockButton and lockButton:IsA("TextButton")) then
+			row:Destroy()
+			continue
+		end
+		if not (addTurnButton and addTurnButton:IsA("TextButton")) then
+			row:Destroy()
+			continue
+		end
+		if not (imageIdBox and imageIdBox:IsA("TextBox")) then
+			row:Destroy()
+			continue
+		end
+
 		nameLabel.Text = charData.Label .. " [" .. (charData.RoleName ~= "" and charData.RoleName or "NPC") .. "]"
-		nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-		nameLabel.TextSize = 13
-		nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-		nameLabel.Parent = row
-
-		local stateLabel = Instance.new("TextLabel")
-		stateLabel.BackgroundTransparency = 1
-		stateLabel.Position = UDim2.fromOffset(174, 28)
-		stateLabel.Size = UDim2.new(1, -186, 0, 14)
-		stateLabel.Font = Enum.Font.GothamMedium
 		stateLabel.Text = charData.MovementLocked and "Movimento: Travado" or "Movimento: Livre"
 		stateLabel.TextColor3 = charData.MovementLocked and Color3.fromRGB(255, 170, 170) or Color3.fromRGB(170, 255, 170)
-		stateLabel.TextSize = 12
-		stateLabel.TextXAlignment = Enum.TextXAlignment.Left
-		stateLabel.Parent = row
-
-		local hpLabel = Instance.new("TextLabel")
-		hpLabel.BackgroundTransparency = 1
-		hpLabel.Position = UDim2.fromOffset(12, 8)
-		hpLabel.Size = UDim2.fromOffset(24, 18)
-		hpLabel.Font = Enum.Font.GothamBold
-		hpLabel.Text = "HP"
-		hpLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-		hpLabel.TextSize = 12
-		hpLabel.Parent = row
-
-		local currentBox = create_text_box(row, tostring(math.floor(charData.CurrentHealth + 0.5)), UDim2.fromOffset(52, 20), UDim2.fromOffset(40, 8))
-
-		local slashLabel = Instance.new("TextLabel")
-		slashLabel.BackgroundTransparency = 1
-		slashLabel.Position = UDim2.fromOffset(96, 8)
-		slashLabel.Size = UDim2.fromOffset(14, 18)
-		slashLabel.Font = Enum.Font.GothamBold
-		slashLabel.Text = "/"
-		slashLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-		slashLabel.TextSize = 12
-		slashLabel.Parent = row
-
-		local maxBox = create_text_box(row, tostring(math.floor(charData.MaxHealth + 0.5)), UDim2.fromOffset(52, 20), UDim2.fromOffset(110, 8))
-		local teleportToPlayerButton = create_text_button(row, "Ir até", UDim2.new(0.32, -8, 0, 24), UDim2.fromOffset(12, 48))
-		local lockButton = create_text_button(row, charData.ManualMovementLocked and "Desbloq." or "Bloquear", UDim2.new(0.32, -8, 0, 24), UDim2.new(0.34, 0, 0, 48))
-		local addTurnButton = create_text_button(row, "Add Turno", UDim2.new(0.32, -8, 0, 24), UDim2.new(0.68, -4, 0, 48))
-
-		local imageLabel = Instance.new("TextLabel")
-		imageLabel.BackgroundTransparency = 1
-		imageLabel.Position = UDim2.fromOffset(12, 80)
-		imageLabel.Size = UDim2.fromOffset(48, 24)
-		imageLabel.Font = Enum.Font.GothamBold
-		imageLabel.Text = "IMAGEM"
-		imageLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-		imageLabel.TextSize = 12
-		imageLabel.Parent = row
-
-		local imageIdBox = create_text_box(row, get_character_image_id(charData.Character), UDim2.new(1, -24, 0, 24), UDim2.fromOffset(12, 104))
+		currentBox.Text = tostring(math.floor(charData.CurrentHealth + 0.5))
+		maxBox.Text = tostring(math.floor(charData.MaxHealth + 0.5))
+		lockButton.Text = charData.ManualMovementLocked and "Desbloq." or "Bloquear"
+		imageIdBox.Text = get_character_image_id(charData.Character)
 
 		local function sync_health_fields(): ()
 			local currentHealth = sanitize_number(currentBox.Text)
@@ -457,30 +431,31 @@ local function render_order_list(): ()
 	update_order_canvas()
 
 	for index, orderData in localOrder do
-		local row = Instance.new("Frame")
-		row.Name = "OrderRow"
-		row.Size = UDim2.new(1, -8, 0, ORDER_ROW_HEIGHT)
+		local row = clone_order_row_template()
+		if not row then
+			continue
+		end
+
 		row.Position = UDim2.fromOffset(4, (index - 1) * ORDER_ROW_SIZE)
 		row.BackgroundColor3 = orderData.IsActive and Color3.fromRGB(46, 52, 68) or Color3.fromRGB(26, 28, 34)
-		row.BorderSizePixel = 0
-		row.Parent = orderList
 
-		create_corner(row, 10)
-		create_stroke(row, 1, 0.8)
+		local dragHandle = row:FindFirstChild("DragHandle")
+		local removeButton = row:FindFirstChild("RemoveButton")
+		local nameLabel = row:FindFirstChild("NameLabel")
+		if not (dragHandle and dragHandle:IsA("TextButton")) then
+			row:Destroy()
+			continue
+		end
+		if not (removeButton and removeButton:IsA("TextButton")) then
+			row:Destroy()
+			continue
+		end
+		if not (nameLabel and nameLabel:IsA("TextLabel")) then
+			row:Destroy()
+			continue
+		end
 
-		local dragHandle = create_text_button(row, "↕", UDim2.fromOffset(28, 24), UDim2.fromOffset(8, 9))
-		local removeButton = create_text_button(row, "X", UDim2.fromOffset(28, 24), UDim2.new(1, -36, 0, 9))
-
-		local nameLabel = Instance.new("TextLabel")
-		nameLabel.BackgroundTransparency = 1
-		nameLabel.Position = UDim2.fromOffset(46, 0)
-		nameLabel.Size = UDim2.new(1, -90, 1, 0)
-		nameLabel.Font = Enum.Font.GothamMedium
 		nameLabel.Text = tostring(index) .. ". " .. orderData.Label
-		nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-		nameLabel.TextSize = 13
-		nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-		nameLabel.Parent = row
 
 		removeButton.MouseButton1Click:Connect(function()
 			fire_tabletop("RemoveOrderEntry", {
