@@ -7,6 +7,7 @@ local Workspace: Workspace = game:GetService("Workspace")
 
 ------------------//CONSTANTS
 local TABLETOP_REMOTE_NAME: string = "TabletopEvent"
+local MASTER_TEAM_NAME: string = "Mestre"
 local RAIN_MODEL_NAME: string = "Rain"
 local RAYCAST_DISTANCE: number = 512
 local RAIN_HEIGHT_OFFSET: number = 10
@@ -34,6 +35,10 @@ raycastParams.FilterType = Enum.RaycastFilterType.Exclude
 raycastParams.IgnoreWater = true
 
 ------------------//FUNCTIONS
+local function is_master(): boolean
+	return player.Team ~= nil and player.Team.Name == MASTER_TEAM_NAME
+end
+
 local function get_clouds(): Clouds?
 	local terrain = Workspace:FindFirstChild("Terrain")
 
@@ -73,9 +78,11 @@ local function set_particles_enabled(isEnabled: boolean): ()
 		return
 	end
 
+	local shouldEnable = isEnabled and not is_master()
+
 	for _, descendant in rainPart:GetDescendants() do
 		if descendant:IsA("ParticleEmitter") then
-			descendant.Enabled = isEnabled
+			descendant.Enabled = shouldEnable
 		end
 	end
 end
@@ -228,6 +235,8 @@ if player.Character then
 end
 
 characterConnection = player.CharacterAdded:Connect(on_character_added)
+
+player:GetPropertyChangedSignal("Team"):Connect(apply_rain_state)
 
 tabletopEvent.OnClientEvent:Connect(function(payload: any)
 	if typeof(payload) ~= "table" or payload.Action ~= "Snapshot" or typeof(payload.State) ~= "table" then
