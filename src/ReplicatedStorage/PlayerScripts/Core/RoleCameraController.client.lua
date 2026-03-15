@@ -4,6 +4,7 @@ local RunService: RunService = game:GetService("RunService")
 local UserInputService: UserInputService = game:GetService("UserInputService")
 local Lighting: Lighting = game:GetService("Lighting")
 local ContextActionService: ContextActionService = game:GetService("ContextActionService")
+local GuiService: GuiService = game:GetService("GuiService")
 
 ------------------//CONSTANTS
 local MASTER_TEAM_NAME: string = "Mestre"
@@ -611,6 +612,24 @@ local function handle_wheel_input(input: InputObject): ()
 
 	if input.UserInputType ~= Enum.UserInputType.MouseWheel then
 		return
+	end
+
+	local mousePosition = UserInputService:GetMouseLocation()
+	local guiInset = GuiService:GetGuiInset()
+	local hoverX = mousePosition.X
+	local hoverY = mousePosition.Y - guiInset.Y
+	local hoveredGuiObjects = playerGui:GetGuiObjectsAtPosition(hoverX, hoverY)
+
+	for _, hoveredGuiObject in hoveredGuiObjects do
+		if hoveredGuiObject.Visible and (
+			hoveredGuiObject.Active
+			or hoveredGuiObject:IsA("TextButton")
+			or hoveredGuiObject:IsA("ImageButton")
+			or hoveredGuiObject:IsA("TextBox")
+			or hoveredGuiObject:IsA("ScrollingFrame")
+		) then
+			return
+		end
 	end
 
 	move_spectator_by_look(input.Position.Z * WHEEL_MOVE_STEP)

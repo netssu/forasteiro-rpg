@@ -64,18 +64,40 @@ local is_valid_delete_target: (inst: Instance?) -> boolean
 ------------------//FUNCTIONS
 local function clear_container(container: Instance): ()
 	for _, child in container:GetChildren() do
-		if not child:IsA("UIListLayout") then
+		if not child:IsA("UILayout") and not child:IsA("UIPadding") then
 			child:Destroy()
 		end
 	end
 end
 
 local function update_scroll_canvas(list: ScrollingFrame): ()
-	local layout = list:FindFirstChildOfClass("UIListLayout")
+	local layout = list:FindFirstChildOfClass("UIGridLayout") or list:FindFirstChildOfClass("UIListLayout")
 	if not layout then
 		return
 	end
-	list.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y)
+	list.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 8)
+end
+
+local function ensure_prefab_grid_layout(itemList: ScrollingFrame): UIGridLayout
+	local existing = itemList:FindFirstChildOfClass("UIGridLayout")
+	if existing then
+		return existing
+	end
+
+	local listLayout = itemList:FindFirstChildOfClass("UIListLayout")
+	if listLayout then
+		listLayout:Destroy()
+	end
+
+	local grid = Instance.new("UIGridLayout")
+	grid.CellPadding = UDim2.new(0, 8, 0, 8)
+	grid.SortOrder = Enum.SortOrder.LayoutOrder
+	grid.FillDirection = Enum.FillDirection.Horizontal
+	grid.FillDirectionMaxCells = 3
+	grid.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	grid.VerticalAlignment = Enum.VerticalAlignment.Top
+	grid.Parent = itemList
+	return grid
 end
 
 local function get_prefab_bounds(prefab: Instance): (CFrame, Vector3)
@@ -450,7 +472,7 @@ local function create_item_button(parent: ScrollingFrame, categoryName: string, 
 	itemButton.BorderSizePixel = 0
 	itemButton.Text = ""
 	itemButton.AutoButtonColor = true
-	itemButton.Size = UDim2.new(0.95, 0, 0.24, 0)
+	itemButton.Size = UDim2.fromScale(1, 1)
 	itemButton.Parent = parent
 
 	local corner = Instance.new("UICorner")
@@ -465,8 +487,8 @@ local function create_item_button(parent: ScrollingFrame, categoryName: string, 
 	viewport.Name = "Preview"
 	viewport.BackgroundColor3 = Color3.fromRGB(16, 18, 24)
 	viewport.BorderSizePixel = 0
-	viewport.Size = UDim2.new(0.36, 0, 0.8, 0)
-	viewport.Position = UDim2.new(0.03, 0, 0.1, 0)
+	viewport.Size = UDim2.new(1, -10, 1, -32)
+	viewport.Position = UDim2.new(0, 5, 0, 5)
 	viewport.Parent = itemButton
 
 	local viewportCorner = Instance.new("UICorner")
@@ -475,25 +497,15 @@ local function create_item_button(parent: ScrollingFrame, categoryName: string, 
 
 	local title = Instance.new("TextLabel")
 	title.BackgroundTransparency = 1
-	title.Position = UDim2.new(0.42, 0, 0.22, 0)
-	title.Size = UDim2.new(0.54, 0, 0.3, 0)
+	title.Position = UDim2.new(0, 6, 1, -24)
+	title.Size = UDim2.new(1, -12, 0, 18)
 	title.Font = Enum.Font.GothamBold
-	title.TextSize = 13
-	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.TextSize = 11
+	title.TextTruncate = Enum.TextTruncate.AtEnd
+	title.TextXAlignment = Enum.TextXAlignment.Center
 	title.TextColor3 = Color3.fromRGB(240, 240, 245)
 	title.Text = prefab.Name
 	title.Parent = itemButton
-
-	local hint = Instance.new("TextLabel")
-	hint.BackgroundTransparency = 1
-	hint.Position = UDim2.new(0.42, 0, 0.52, 0)
-	hint.Size = UDim2.new(0.54, 0, 0.24, 0)
-	hint.Font = Enum.Font.GothamMedium
-	hint.TextSize = 11
-	hint.TextXAlignment = Enum.TextXAlignment.Left
-	hint.TextColor3 = Color3.fromRGB(150, 156, 170)
-	hint.Text = categoryName
-	hint.Parent = itemButton
 
 	fill_viewport(viewport, prefab)
 
@@ -537,6 +549,8 @@ local function populate_prefab_list(window: GuiObject, categoryName: string): ()
 	end
 
 	clear_container(itemList)
+	local gridLayout = ensure_prefab_grid_layout(itemList)
+	gridLayout.CellSize = UDim2.new((1 / 3), -10, 0, 108)
 	if selectedItemButton then
 		selectedItemButton = nil
 	end
@@ -744,6 +758,18 @@ local function wire_window_controls(gui: ScreenGui, window: GuiObject): ()
 	boundWindows[window] = true
 	window.Destroying:Connect(function()
 		boundWindows[window] = nil
+	end)
+
+	window:GetPropertyChangedSignal("Visible"):Connect(function()
+		if not window.Visible then
+			clear_selected_prefab(window)
+		end
+	end)
+
+	gui:GetPropertyChangedSignal("Enabled"):Connect(function()
+		if not gui.Enabled then
+			clear_selected_prefab(window)
+		end
 	end)
 
 	if toggleButton and toggleButton:IsA("TextButton") then
