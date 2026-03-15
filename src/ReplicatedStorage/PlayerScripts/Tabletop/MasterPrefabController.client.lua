@@ -1,6 +1,7 @@
 ------------------//SERVICES
 local Players: Players = game:GetService("Players")
 local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService: RunService = game:GetService("RunService")
 local UserInputService: UserInputService = game:GetService("UserInputService")
 
 ------------------//CONSTANTS
@@ -48,6 +49,15 @@ local selectedDeleteTarget: Instance? = nil
 local mouseDownAt: number? = nil
 local sprayActive: boolean = false
 local boundWindows: {[Frame]: boolean} = {}
+local selectedItemButton: TextButton? = nil
+local previewInstance: Instance? = nil
+local previewConnection: RBXScriptConnection? = nil
+
+local ITEM_DEFAULT_COLOR = Color3.fromRGB(28, 31, 39)
+local ITEM_SELECTED_COLOR = Color3.fromRGB(201, 176, 62)
+
+local refresh_selected_label: (window: Frame) -> ()
+local refresh_toggles: (window: Frame) -> ()
 
 ------------------//FUNCTIONS
 local function clear_container(container: Instance): ()
@@ -138,6 +148,97 @@ local function get_place_cframe(gridSize: number): CFrame?
 	return CFrame.new(snapped)
 end
 
+local function update_preview_transform(): ()
+	if not previewInstance or not previewInstance.Parent then
+		return
+	end
+
+	local grid = read_grid_size(activeGui)
+	local placeCFrame = get_place_cframe(grid)
+	if not placeCFrame then
+		return
+	end
+
+	if previewInstance:IsA("Model") then
+		previewInstance:PivotTo(placeCFrame)
+	elseif previewInstance:IsA("BasePart") then
+		previewInstance.CFrame = placeCFrame
+	end
+end
+
+local function clear_preview(): ()
+	if previewConnection then
+		previewConnection:Disconnect()
+		previewConnection = nil
+	end
+
+	if previewInstance then
+		previewInstance:Destroy()
+		previewInstance = nil
+	end
+end
+
+local function show_prefab_preview(categoryName: string, prefabName: string): ()
+	clear_preview()
+
+	local categoryFolder = prefabRoot:FindFirstChild(categoryName)
+	if not categoryFolder or not categoryFolder:IsA("Folder") then
+		return
+	end
+
+	local prefab = categoryFolder:FindFirstChild(prefabName)
+	if not prefab or (not prefab:IsA("Model") and not prefab:IsA("BasePart")) then
+		return
+	end
+
+	local clone = prefab:Clone()
+	clone.Name = "PrefabPlacementPreview"
+
+	for _, descendant in clone:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			descendant.Anchored = true
+			descendant.CanCollide = false
+			descendant.CanTouch = false
+			descendant.CanQuery = false
+			descendant.Transparency = math.max(descendant.Transparency, 0.55)
+			descendant.Material = Enum.Material.ForceField
+		end
+	end
+
+	if clone:IsA("BasePart") then
+		clone.Anchored = true
+		clone.CanCollide = false
+		clone.CanTouch = false
+		clone.CanQuery = false
+		clone.Transparency = math.max(clone.Transparency, 0.55)
+		clone.Material = Enum.Material.ForceField
+	end
+
+	clone.Parent = workspace
+	previewInstance = clone
+	update_preview_transform()
+	previewConnection = RunService.RenderStepped:Connect(update_preview_transform)
+end
+
+local function set_item_selected(itemButton: TextButton, selected: boolean): ()
+	itemButton.BackgroundColor3 = selected and ITEM_SELECTED_COLOR or ITEM_DEFAULT_COLOR
+end
+
+local function clear_selected_prefab(window: Frame): ()
+	currentCategory = nil
+	currentPrefabName = nil
+	placeModeEnabled = false
+
+	if selectedItemButton then
+		set_item_selected(selectedItemButton, false)
+		selectedItemButton = nil
+	end
+
+	clear_preview()
+	refresh_selected_label(window)
+	refresh_toggles(window)
+end
+
 local function close_other_frames(gui: ScreenGui): ()
 	for _, frameName in OTHER_FRAME_NAMES do
 		local frame = gui:FindFirstChild(frameName)
@@ -218,7 +319,7 @@ local function resolve_target_from_mouse(): Instance?
 	return target
 end
 
-local function refresh_selected_label(window: Frame): ()
+function refresh_selected_label(window: Frame): ()
 	local body = window:FindFirstChild("Body")
 	if not body then
 		return
@@ -243,7 +344,7 @@ local function refresh_selected_label(window: Frame): ()
 	end
 end
 
-local function refresh_toggles(window: Frame): ()
+function refresh_toggles(window: Frame): ()
 	local body = window:FindFirstChild("Body")
 	if not body then
 		return
@@ -307,7 +408,7 @@ end
 local function create_item_button(parent: ScrollingFrame, categoryName: string, prefab: Instance): ()
 	local itemButton = Instance.new("TextButton")
 	itemButton.Name = prefab.Name .. "Button"
-	itemButton.BackgroundColor3 = Color3.fromRGB(28, 31, 39)
+	itemButton.BackgroundColor3 = ITEM_DEFAULT_COLOR
 	itemButton.BorderSizePixel = 0
 	itemButton.Text = ""
 	itemButton.AutoButtonColor = true
@@ -359,14 +460,33 @@ local function create_item_button(parent: ScrollingFrame, categoryName: string, 
 	fill_viewport(viewport, prefab)
 
 	itemButton.MouseButton1Click:Connect(function()
+		if not activeGui then
+			return
+		end
+
+		local window = activeGui:FindFirstChild(WINDOW_NAME)
+		if not window or not window:IsA("Frame") then
+			return
+		end
+
+		if selectedItemButton and selectedItemButton ~= itemButton then
+			set_item_selected(selectedItemButton, false)
+		end
+
+		if currentCategory == categoryName and currentPrefabName == prefab.Name then
+			clear_selected_prefab(window)
+			return
+		end
+
 		currentCategory = categoryName
 		currentPrefabName = prefab.Name
-		if activeGui then
-			local window = activeGui:FindFirstChild(WINDOW_NAME)
-			if window and window:IsA("Frame") then
-				refresh_selected_label(window)
-			end
-		end
+		placeModeEnabled = true
+		deleteModeEnabled = false
+		selectedItemButton = itemButton
+		set_item_selected(itemButton, true)
+		show_prefab_preview(categoryName, prefab.Name)
+		refresh_selected_label(window)
+		refresh_toggles(window)
 	end)
 end
 
@@ -382,6 +502,13 @@ local function populate_prefab_list(window: Frame, categoryName: string): ()
 	end
 
 	clear_container(itemList)
+	if selectedItemButton then
+		selectedItemButton = nil
+	end
+	clear_preview()
+	placeModeEnabled = false
+	currentPrefabName = nil
+	currentCategory = categoryName
 	local categoryFolder = prefabRoot:FindFirstChild(categoryName)
 	if not categoryFolder or not categoryFolder:IsA("Folder") then
 		return
@@ -432,7 +559,6 @@ local function populate_categories(window: Frame): ()
 			stroke.Parent = categoryButton
 
 			categoryButton.MouseButton1Click:Connect(function()
-				currentCategory = child.Name
 				populate_prefab_list(window, child.Name)
 			end)
 		end
@@ -586,23 +712,21 @@ local function wire_window_controls(gui: ScreenGui, window: Frame): ()
 				end
 			end
 			window.Visible = willOpen
+			if not willOpen then
+				clear_selected_prefab(window)
+			end
 		end)
 	end
 
 	if closeButton and closeButton:IsA("TextButton") then
 		closeButton.MouseButton1Click:Connect(function()
 			window.Visible = false
+			clear_selected_prefab(window)
 		end)
 	end
 
 	if placeToggle and placeToggle:IsA("TextButton") then
-		placeToggle.MouseButton1Click:Connect(function()
-			placeModeEnabled = not placeModeEnabled
-			if placeModeEnabled then
-				deleteModeEnabled = false
-			end
-			refresh_toggles(window)
-		end)
+		placeToggle.Visible = false
 	end
 
 	if deleteModeButton and deleteModeButton:IsA("TextButton") then
