@@ -621,7 +621,13 @@ local function handle_wheel_input(input: InputObject): ()
 	local hoveredGuiObjects = playerGui:GetGuiObjectsAtPosition(hoverX, hoverY)
 
 	for _, hoveredGuiObject in hoveredGuiObjects do
-		if hoveredGuiObject.Visible then
+		if hoveredGuiObject.Visible and (
+			hoveredGuiObject.Active
+			or hoveredGuiObject:IsA("TextButton")
+			or hoveredGuiObject:IsA("ImageButton")
+			or hoveredGuiObject:IsA("TextBox")
+			or hoveredGuiObject:IsA("ScrollingFrame")
+		) then
 			return
 		end
 	end
