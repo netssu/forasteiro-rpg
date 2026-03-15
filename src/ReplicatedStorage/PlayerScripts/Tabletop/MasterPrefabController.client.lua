@@ -1,6 +1,7 @@
 ------------------//SERVICES
 local Players: Players = game:GetService("Players")
 local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService: RunService = game:GetService("RunService")
 local UserInputService: UserInputService = game:GetService("UserInputService")
 
 ------------------//CONSTANTS
@@ -11,7 +12,7 @@ local REMOTE_NAME: string = "MasterBuildEvent"
 local PREFAB_FOLDER_NAME: string = "Prefrab"
 local BUILD_FOLDER_NAME: string = "TabletopBuildParts"
 
-local HOLD_TO_SPRAY_SECONDS: number = 2
+local HOLD_TO_SPRAY_SECONDS: number = 1
 local FREQUENCY_MIN: number = 1
 local FREQUENCY_MAX: number = 12
 
@@ -47,7 +48,18 @@ local activeGui: ScreenGui? = nil
 local selectedDeleteTarget: Instance? = nil
 local mouseDownAt: number? = nil
 local sprayActive: boolean = false
-local boundWindows: {[Frame]: boolean} = {}
+local boundWindows: {[GuiObject]: boolean} = {}
+local selectedItemButton: TextButton? = nil
+local previewInstance: Instance? = nil
+local previewConnection: RBXScriptConnection? = nil
+local deleteSelectionBox: SelectionBox? = nil
+
+local ITEM_DEFAULT_COLOR = Color3.fromRGB(28, 31, 39)
+local ITEM_SELECTED_COLOR = Color3.fromRGB(201, 176, 62)
+
+local refresh_selected_label: (window: GuiObject) -> ()
+local refresh_toggles: (window: GuiObject) -> ()
+local is_valid_delete_target: (inst: Instance?) -> boolean
 
 ------------------//FUNCTIONS
 local function clear_container(container: Instance): ()
@@ -138,6 +150,138 @@ local function get_place_cframe(gridSize: number): CFrame?
 	return CFrame.new(snapped)
 end
 
+local function update_preview_transform(): ()
+	if not previewInstance or not previewInstance.Parent then
+		return
+	end
+
+	local grid = read_grid_size(activeGui)
+	local placeCFrame = get_place_cframe(grid)
+	if not placeCFrame then
+		return
+	end
+
+	if previewInstance:IsA("Model") then
+		local currentPivot = previewInstance:GetPivot()
+		local _, extentsSize = previewInstance:GetBoundingBox()
+		local yOffset = math.max(0, extentsSize.Y * 0.5)
+		local targetPivot = placeCFrame * CFrame.new(0, yOffset, 0)
+		previewInstance:PivotTo(targetPivot * currentPivot.Rotation)
+	elseif previewInstance:IsA("BasePart") then
+		local yOffset = math.max(0, previewInstance.Size.Y * 0.5)
+		previewInstance.CFrame = placeCFrame * CFrame.new(0, yOffset, 0)
+	end
+end
+
+local function clear_preview(): ()
+	if previewConnection then
+		previewConnection:Disconnect()
+		previewConnection = nil
+	end
+
+	if previewInstance then
+		previewInstance:Destroy()
+		previewInstance = nil
+	end
+end
+
+
+local function clear_delete_selection_box(): ()
+	if deleteSelectionBox then
+		deleteSelectionBox.Adornee = nil
+		deleteSelectionBox:Destroy()
+		deleteSelectionBox = nil
+	end
+end
+
+local function refresh_delete_selection_box(): ()
+	if selectedDeleteTarget and is_valid_delete_target(selectedDeleteTarget) then
+		if not deleteSelectionBox then
+			deleteSelectionBox = Instance.new("SelectionBox")
+			deleteSelectionBox.Name = "PrefabDeleteSelection"
+			deleteSelectionBox.LineThickness = 0.06
+			deleteSelectionBox.Color3 = Color3.fromRGB(255, 90, 90)
+			deleteSelectionBox.SurfaceTransparency = 0.85
+			deleteSelectionBox.Parent = workspace
+		end
+		deleteSelectionBox.Adornee = selectedDeleteTarget
+	else
+		clear_delete_selection_box()
+	end
+end
+
+local function show_prefab_preview(categoryName: string, prefabName: string): ()
+	clear_preview()
+
+	local categoryFolder = prefabRoot:FindFirstChild(categoryName)
+	if not categoryFolder or not categoryFolder:IsA("Folder") then
+		return
+	end
+
+	local prefab = categoryFolder:FindFirstChild(prefabName)
+	if not prefab or (not prefab:IsA("Model") and not prefab:IsA("BasePart")) then
+		return
+	end
+
+	local clone = prefab:Clone()
+	clone.Name = "PrefabPlacementPreview"
+
+	for _, descendant in clone:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			descendant.Anchored = true
+			descendant.CanCollide = false
+			descendant.CanTouch = false
+			descendant.CanQuery = false
+			descendant.Transparency = math.max(descendant.Transparency, 0.55)
+			descendant.Material = Enum.Material.ForceField
+		end
+	end
+
+	if clone:IsA("BasePart") then
+		clone.Anchored = true
+		clone.CanCollide = false
+		clone.CanTouch = false
+		clone.CanQuery = false
+		clone.Transparency = math.max(clone.Transparency, 0.55)
+		clone.Material = Enum.Material.ForceField
+	end
+
+	clone.Parent = workspace
+	previewInstance = clone
+	update_preview_transform()
+	previewConnection = RunService.RenderStepped:Connect(update_preview_transform)
+end
+
+local function set_item_selected(itemButton: TextButton, selected: boolean): ()
+	itemButton.BackgroundColor3 = selected and ITEM_SELECTED_COLOR or ITEM_DEFAULT_COLOR
+end
+
+local function get_window_body(window: GuiObject): Instance
+	local body = window:FindFirstChild("Body")
+	if body then
+		return body
+	end
+
+	return window
+end
+
+local function clear_selected_prefab(window: GuiObject): ()
+	currentCategory = nil
+	currentPrefabName = nil
+	placeModeEnabled = false
+
+	if selectedItemButton then
+		set_item_selected(selectedItemButton, false)
+		selectedItemButton = nil
+	end
+
+	clear_preview()
+	selectedDeleteTarget = nil
+	refresh_delete_selection_box()
+	refresh_selected_label(window)
+	refresh_toggles(window)
+end
+
 local function close_other_frames(gui: ScreenGui): ()
 	for _, frameName in OTHER_FRAME_NAMES do
 		local frame = gui:FindFirstChild(frameName)
@@ -147,11 +291,8 @@ local function close_other_frames(gui: ScreenGui): ()
 	end
 end
 
-local function sanitize_scale_range(window: Frame): (number, number)
-	local body = window:FindFirstChild("Body")
-	if not body then
-		return 0.8, 1.2
-	end
+local function sanitize_scale_range(window: GuiObject): (number, number)
+	local body = get_window_body(window)
 
 	local minBox = body:FindFirstChild("ScaleMinBox")
 	local maxBox = body:FindFirstChild("ScaleMaxBox")
@@ -175,7 +316,7 @@ local function sanitize_scale_range(window: Frame): (number, number)
 	return minValue, maxValue
 end
 
-local function is_valid_delete_target(inst: Instance?): boolean
+function is_valid_delete_target(inst: Instance?): boolean
 	if not inst then
 		return false
 	end
@@ -201,28 +342,32 @@ local function resolve_target_from_mouse(): Instance?
 		return nil
 	end
 
-	if target:GetAttribute("IsTabletopBuildPart") ~= true or target:GetAttribute("BuildKind") ~= "Prefab" then
-		return nil
-	end
-
 	local buildFolder = workspace:FindFirstChild(BUILD_FOLDER_NAME)
-	if not buildFolder then
-		return target
+	local cursor: Instance? = target
+	while cursor do
+		if is_valid_delete_target(cursor) then
+			if cursor:IsA("BasePart") then
+				local modelAncestor = cursor:FindFirstAncestorOfClass("Model")
+				if modelAncestor and (not buildFolder or modelAncestor.Parent == buildFolder) and is_valid_delete_target(modelAncestor) then
+					return modelAncestor
+				end
+			end
+
+			if buildFolder and cursor.Parent ~= buildFolder and not cursor:IsDescendantOf(buildFolder) then
+				cursor = cursor.Parent
+				continue
+			end
+
+			return cursor
+		end
+		cursor = cursor.Parent
 	end
 
-	local modelAncestor = target:FindFirstAncestorOfClass("Model")
-	if modelAncestor and modelAncestor.Parent == buildFolder then
-		return modelAncestor
-	end
-
-	return target
+	return nil
 end
 
-local function refresh_selected_label(window: Frame): ()
-	local body = window:FindFirstChild("Body")
-	if not body then
-		return
-	end
+function refresh_selected_label(window: GuiObject): ()
+	local body = get_window_body(window)
 
 	local selectedLabel = body:FindFirstChild("SelectedLabel")
 	if selectedLabel and selectedLabel:IsA("TextLabel") then
@@ -243,11 +388,8 @@ local function refresh_selected_label(window: Frame): ()
 	end
 end
 
-local function refresh_toggles(window: Frame): ()
-	local body = window:FindFirstChild("Body")
-	if not body then
-		return
-	end
+function refresh_toggles(window: GuiObject): ()
+	local body = get_window_body(window)
 
 	local placeToggle = body:FindFirstChild("PlaceToggleButton")
 	if placeToggle and placeToggle:IsA("TextButton") then
@@ -279,14 +421,11 @@ local function refresh_toggles(window: Frame): ()
 	end
 end
 
-local function update_frequency_slider(window: Frame, pct: number): ()
+local function update_frequency_slider(window: GuiObject, pct: number): ()
 	pct = math.clamp(pct, 0, 1)
 	frequencyPerSecond = FREQUENCY_MIN + ((FREQUENCY_MAX - FREQUENCY_MIN) * pct)
 
-	local body = window:FindFirstChild("Body")
-	if not body then
-		return
-	end
+	local body = get_window_body(window)
 
 	local track = body:FindFirstChild("FrequencyTrack")
 	if track and track:IsA("Frame") then
@@ -307,7 +446,7 @@ end
 local function create_item_button(parent: ScrollingFrame, categoryName: string, prefab: Instance): ()
 	local itemButton = Instance.new("TextButton")
 	itemButton.Name = prefab.Name .. "Button"
-	itemButton.BackgroundColor3 = Color3.fromRGB(28, 31, 39)
+	itemButton.BackgroundColor3 = ITEM_DEFAULT_COLOR
 	itemButton.BorderSizePixel = 0
 	itemButton.Text = ""
 	itemButton.AutoButtonColor = true
@@ -359,22 +498,38 @@ local function create_item_button(parent: ScrollingFrame, categoryName: string, 
 	fill_viewport(viewport, prefab)
 
 	itemButton.MouseButton1Click:Connect(function()
+		if not activeGui then
+			return
+		end
+
+		local window = activeGui:FindFirstChild(WINDOW_NAME)
+		if not window or not window:IsA("GuiObject") then
+			return
+		end
+
+		if selectedItemButton and selectedItemButton ~= itemButton then
+			set_item_selected(selectedItemButton, false)
+		end
+
+		if currentCategory == categoryName and currentPrefabName == prefab.Name then
+			clear_selected_prefab(window)
+			return
+		end
+
 		currentCategory = categoryName
 		currentPrefabName = prefab.Name
-		if activeGui then
-			local window = activeGui:FindFirstChild(WINDOW_NAME)
-			if window and window:IsA("Frame") then
-				refresh_selected_label(window)
-			end
-		end
+		placeModeEnabled = true
+		deleteModeEnabled = false
+		selectedItemButton = itemButton
+		set_item_selected(itemButton, true)
+		show_prefab_preview(categoryName, prefab.Name)
+		refresh_selected_label(window)
+		refresh_toggles(window)
 	end)
 end
 
-local function populate_prefab_list(window: Frame, categoryName: string): ()
-	local body = window:FindFirstChild("Body")
-	if not body then
-		return
-	end
+local function populate_prefab_list(window: GuiObject, categoryName: string): ()
+	local body = get_window_body(window)
 
 	local itemList = body:FindFirstChild("ItemList")
 	if not itemList or not itemList:IsA("ScrollingFrame") then
@@ -382,6 +537,13 @@ local function populate_prefab_list(window: Frame, categoryName: string): ()
 	end
 
 	clear_container(itemList)
+	if selectedItemButton then
+		selectedItemButton = nil
+	end
+	clear_preview()
+	placeModeEnabled = false
+	currentPrefabName = nil
+	currentCategory = categoryName
 	local categoryFolder = prefabRoot:FindFirstChild(categoryName)
 	if not categoryFolder or not categoryFolder:IsA("Folder") then
 		return
@@ -397,11 +559,8 @@ local function populate_prefab_list(window: Frame, categoryName: string): ()
 	refresh_selected_label(window)
 end
 
-local function populate_categories(window: Frame): ()
-	local body = window:FindFirstChild("Body")
-	if not body then
-		return
-	end
+local function populate_categories(window: GuiObject): ()
+	local body = get_window_body(window)
 
 	local categoryList = body:FindFirstChild("CategoryList")
 	if not categoryList or not categoryList:IsA("ScrollingFrame") then
@@ -432,7 +591,6 @@ local function populate_categories(window: Frame): ()
 			stroke.Parent = categoryButton
 
 			categoryButton.MouseButton1Click:Connect(function()
-				currentCategory = child.Name
 				populate_prefab_list(window, child.Name)
 			end)
 		end
@@ -447,7 +605,7 @@ local function try_place_prefab(): ()
 	end
 
 	local window = activeGui:FindFirstChild(WINDOW_NAME)
-	if not window or not window:IsA("Frame") or not window.Visible then
+	if not window or not window:IsA("GuiObject") or not window.Visible then
 		return
 	end
 
@@ -484,16 +642,27 @@ local function select_target_to_delete(): ()
 	end
 
 	local window = activeGui:FindFirstChild(WINDOW_NAME)
-	if not window or not window:IsA("Frame") or not window.Visible then
+	if not window or not window:IsA("GuiObject") or not window.Visible then
 		return
 	end
 
-	selectedDeleteTarget = resolve_target_from_mouse()
+	local resolved = resolve_target_from_mouse()
+	if selectedDeleteTarget and resolved == selectedDeleteTarget then
+		selectedDeleteTarget = nil
+	else
+		selectedDeleteTarget = resolved
+	end
+	refresh_delete_selection_box()
 	refresh_selected_label(window)
 end
 
 local function delete_selected_target(): ()
+	if (not selectedDeleteTarget or not is_valid_delete_target(selectedDeleteTarget)) and deleteModeEnabled then
+		selectedDeleteTarget = resolve_target_from_mouse()
+	end
+
 	if not selectedDeleteTarget or not is_valid_delete_target(selectedDeleteTarget) then
+		refresh_delete_selection_box()
 		return
 	end
 
@@ -503,9 +672,10 @@ local function delete_selected_target(): ()
 	})
 
 	selectedDeleteTarget = nil
+	refresh_delete_selection_box()
 	if activeGui then
 		local window = activeGui:FindFirstChild(WINDOW_NAME)
-		if window and window:IsA("Frame") then
+		if window and window:IsA("GuiObject") then
 			refresh_selected_label(window)
 		end
 	end
@@ -517,9 +687,10 @@ local function delete_all_prefabs(): ()
 	})
 
 	selectedDeleteTarget = nil
+	refresh_delete_selection_box()
 	if activeGui then
 		local window = activeGui:FindFirstChild(WINDOW_NAME)
-		if window and window:IsA("Frame") then
+		if window and window:IsA("GuiObject") then
 			refresh_selected_label(window)
 		end
 	end
@@ -544,7 +715,7 @@ local function stop_spray_loop(): ()
 	sprayActive = false
 end
 
-local function wire_window_controls(gui: ScreenGui, window: Frame): ()
+local function wire_window_controls(gui: ScreenGui, window: GuiObject): ()
 	local topBar = gui:FindFirstChild("TopBar")
 	if not topBar then
 		return
@@ -552,8 +723,8 @@ local function wire_window_controls(gui: ScreenGui, window: Frame): ()
 
 	local toggleButton = topBar:FindFirstChild(TOGGLE_NAME)
 	local header = window:FindFirstChild("Header")
-	local closeButton = header and header:FindFirstChild("CloseButton")
-	local body = window:FindFirstChild("Body")
+	local closeButton = (header and header:FindFirstChild("CloseButton")) or window:FindFirstChild("CloseButton")
+	local body = get_window_body(window)
 	local placeToggle = body and body:FindFirstChild("PlaceToggleButton")
 	local deleteModeButton = body and body:FindFirstChild("DeleteModeButton")
 	local deleteSelectedButton = body and body:FindFirstChild("DeleteSelectedButton")
@@ -586,23 +757,21 @@ local function wire_window_controls(gui: ScreenGui, window: Frame): ()
 				end
 			end
 			window.Visible = willOpen
+			if not willOpen then
+				clear_selected_prefab(window)
+			end
 		end)
 	end
 
 	if closeButton and closeButton:IsA("TextButton") then
 		closeButton.MouseButton1Click:Connect(function()
 			window.Visible = false
+			clear_selected_prefab(window)
 		end)
 	end
 
 	if placeToggle and placeToggle:IsA("TextButton") then
-		placeToggle.MouseButton1Click:Connect(function()
-			placeModeEnabled = not placeModeEnabled
-			if placeModeEnabled then
-				deleteModeEnabled = false
-			end
-			refresh_toggles(window)
-		end)
+		placeToggle.Visible = false
 	end
 
 	if deleteModeButton and deleteModeButton:IsA("TextButton") then
@@ -610,8 +779,13 @@ local function wire_window_controls(gui: ScreenGui, window: Frame): ()
 			deleteModeEnabled = not deleteModeEnabled
 			if deleteModeEnabled then
 				placeModeEnabled = false
+				clear_preview()
+			else
+				selectedDeleteTarget = nil
+				refresh_delete_selection_box()
 			end
 			refresh_toggles(window)
+			refresh_selected_label(window)
 		end)
 	end
 
@@ -672,7 +846,7 @@ end
 local function wire_gui(gui: ScreenGui): ()
 	activeGui = gui
 	local window = gui:FindFirstChild(WINDOW_NAME)
-	if not window then
+	if not window or not window:IsA("GuiObject") then
 		return
 	end
 
