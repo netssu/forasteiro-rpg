@@ -199,35 +199,23 @@ local function update_spectator_toggle_button(): ()
 		return
 	end
 
-	local button = playerGui:FindFirstChild(PLAYER_SPECTATOR_BUTTON_NAME,true)
-	if not button then
-		button = Instance.new("TextButton")
-		button.Name = PLAYER_SPECTATOR_BUTTON_NAME
-		button.AnchorPoint = Vector2.new(1, 0.5)
-		button.Position = UDim2.new(1, -145, 0.5, 0)
-		button.Size = UDim2.fromOffset(130, 30)
-		button.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-		button.BackgroundTransparency = 0.15
-		button.BorderSizePixel = 0
-		button.Font = Enum.Font.GothamBold
-		button.TextColor3 = Color3.new(1, 1, 1)
-		button.TextSize = 14
-		button.AutoButtonColor = true
-		button.Parent = topBar
+	local button = topBar:FindFirstChild(PLAYER_SPECTATOR_BUTTON_NAME)
 
-		button.MouseButton1Click:Connect(function()
-			if not is_player_role() then
-				return
-			end
+	if button and button:IsA("TextButton") then
+		if not button:GetAttribute("SpectatorBound") then
+			button:SetAttribute("SpectatorBound", true)
+			button.MouseButton1Click:Connect(function()
+				if not is_player_role() then
+					return
+				end
 
-			player:SetAttribute(
-				PLAYER_SPECTATOR_ATTRIBUTE_NAME,
-				not playerSpectatorRequested
-			)
-		end)
-	end
+				player:SetAttribute(
+					PLAYER_SPECTATOR_ATTRIBUTE_NAME,
+					not playerSpectatorRequested
+				)
+			end)
+		end
 
-	if button:IsA("TextButton") then
 		spectatorToggleButton = button
 		spectatorToggleButton.Visible = is_player_role()
 		spectatorToggleButton.Text = playerSpectatorRequested
