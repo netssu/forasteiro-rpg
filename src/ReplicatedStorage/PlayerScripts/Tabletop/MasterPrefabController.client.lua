@@ -48,7 +48,7 @@ local activeGui: ScreenGui? = nil
 local selectedDeleteTarget: Instance? = nil
 local mouseDownAt: number? = nil
 local sprayActive: boolean = false
-local boundWindows: {[Frame]: boolean} = {}
+local boundWindows: {[GuiObject]: boolean} = {}
 local selectedItemButton: TextButton? = nil
 local previewInstance: Instance? = nil
 local previewConnection: RBXScriptConnection? = nil
@@ -56,8 +56,8 @@ local previewConnection: RBXScriptConnection? = nil
 local ITEM_DEFAULT_COLOR = Color3.fromRGB(28, 31, 39)
 local ITEM_SELECTED_COLOR = Color3.fromRGB(201, 176, 62)
 
-local refresh_selected_label: (window: Frame) -> ()
-local refresh_toggles: (window: Frame) -> ()
+local refresh_selected_label: (window: GuiObject) -> ()
+local refresh_toggles: (window: GuiObject) -> ()
 
 ------------------//FUNCTIONS
 local function clear_container(container: Instance): ()
@@ -224,7 +224,16 @@ local function set_item_selected(itemButton: TextButton, selected: boolean): ()
 	itemButton.BackgroundColor3 = selected and ITEM_SELECTED_COLOR or ITEM_DEFAULT_COLOR
 end
 
-local function clear_selected_prefab(window: Frame): ()
+local function get_window_body(window: GuiObject): Instance
+	local body = window:FindFirstChild("Body")
+	if body then
+		return body
+	end
+
+	return window
+end
+
+local function clear_selected_prefab(window: GuiObject): ()
 	currentCategory = nil
 	currentPrefabName = nil
 	placeModeEnabled = false
@@ -248,11 +257,8 @@ local function close_other_frames(gui: ScreenGui): ()
 	end
 end
 
-local function sanitize_scale_range(window: Frame): (number, number)
-	local body = window:FindFirstChild("Body")
-	if not body then
-		return 0.8, 1.2
-	end
+local function sanitize_scale_range(window: GuiObject): (number, number)
+	local body = get_window_body(window)
 
 	local minBox = body:FindFirstChild("ScaleMinBox")
 	local maxBox = body:FindFirstChild("ScaleMaxBox")
@@ -319,11 +325,8 @@ local function resolve_target_from_mouse(): Instance?
 	return target
 end
 
-function refresh_selected_label(window: Frame): ()
-	local body = window:FindFirstChild("Body")
-	if not body then
-		return
-	end
+function refresh_selected_label(window: GuiObject): ()
+	local body = get_window_body(window)
 
 	local selectedLabel = body:FindFirstChild("SelectedLabel")
 	if selectedLabel and selectedLabel:IsA("TextLabel") then
@@ -344,11 +347,8 @@ function refresh_selected_label(window: Frame): ()
 	end
 end
 
-function refresh_toggles(window: Frame): ()
-	local body = window:FindFirstChild("Body")
-	if not body then
-		return
-	end
+function refresh_toggles(window: GuiObject): ()
+	local body = get_window_body(window)
 
 	local placeToggle = body:FindFirstChild("PlaceToggleButton")
 	if placeToggle and placeToggle:IsA("TextButton") then
@@ -380,14 +380,11 @@ function refresh_toggles(window: Frame): ()
 	end
 end
 
-local function update_frequency_slider(window: Frame, pct: number): ()
+local function update_frequency_slider(window: GuiObject, pct: number): ()
 	pct = math.clamp(pct, 0, 1)
 	frequencyPerSecond = FREQUENCY_MIN + ((FREQUENCY_MAX - FREQUENCY_MIN) * pct)
 
-	local body = window:FindFirstChild("Body")
-	if not body then
-		return
-	end
+	local body = get_window_body(window)
 
 	local track = body:FindFirstChild("FrequencyTrack")
 	if track and track:IsA("Frame") then
@@ -465,7 +462,7 @@ local function create_item_button(parent: ScrollingFrame, categoryName: string, 
 		end
 
 		local window = activeGui:FindFirstChild(WINDOW_NAME)
-		if not window or not window:IsA("Frame") then
+		if not window or not window:IsA("GuiObject") then
 			return
 		end
 
@@ -490,11 +487,8 @@ local function create_item_button(parent: ScrollingFrame, categoryName: string, 
 	end)
 end
 
-local function populate_prefab_list(window: Frame, categoryName: string): ()
-	local body = window:FindFirstChild("Body")
-	if not body then
-		return
-	end
+local function populate_prefab_list(window: GuiObject, categoryName: string): ()
+	local body = get_window_body(window)
 
 	local itemList = body:FindFirstChild("ItemList")
 	if not itemList or not itemList:IsA("ScrollingFrame") then
@@ -524,11 +518,8 @@ local function populate_prefab_list(window: Frame, categoryName: string): ()
 	refresh_selected_label(window)
 end
 
-local function populate_categories(window: Frame): ()
-	local body = window:FindFirstChild("Body")
-	if not body then
-		return
-	end
+local function populate_categories(window: GuiObject): ()
+	local body = get_window_body(window)
 
 	local categoryList = body:FindFirstChild("CategoryList")
 	if not categoryList or not categoryList:IsA("ScrollingFrame") then
@@ -573,7 +564,7 @@ local function try_place_prefab(): ()
 	end
 
 	local window = activeGui:FindFirstChild(WINDOW_NAME)
-	if not window or not window:IsA("Frame") or not window.Visible then
+	if not window or not window:IsA("GuiObject") or not window.Visible then
 		return
 	end
 
@@ -610,7 +601,7 @@ local function select_target_to_delete(): ()
 	end
 
 	local window = activeGui:FindFirstChild(WINDOW_NAME)
-	if not window or not window:IsA("Frame") or not window.Visible then
+	if not window or not window:IsA("GuiObject") or not window.Visible then
 		return
 	end
 
@@ -631,7 +622,7 @@ local function delete_selected_target(): ()
 	selectedDeleteTarget = nil
 	if activeGui then
 		local window = activeGui:FindFirstChild(WINDOW_NAME)
-		if window and window:IsA("Frame") then
+		if window and window:IsA("GuiObject") then
 			refresh_selected_label(window)
 		end
 	end
@@ -645,7 +636,7 @@ local function delete_all_prefabs(): ()
 	selectedDeleteTarget = nil
 	if activeGui then
 		local window = activeGui:FindFirstChild(WINDOW_NAME)
-		if window and window:IsA("Frame") then
+		if window and window:IsA("GuiObject") then
 			refresh_selected_label(window)
 		end
 	end
@@ -670,7 +661,7 @@ local function stop_spray_loop(): ()
 	sprayActive = false
 end
 
-local function wire_window_controls(gui: ScreenGui, window: Frame): ()
+local function wire_window_controls(gui: ScreenGui, window: GuiObject): ()
 	local topBar = gui:FindFirstChild("TopBar")
 	if not topBar then
 		return
@@ -678,8 +669,8 @@ local function wire_window_controls(gui: ScreenGui, window: Frame): ()
 
 	local toggleButton = topBar:FindFirstChild(TOGGLE_NAME)
 	local header = window:FindFirstChild("Header")
-	local closeButton = header and header:FindFirstChild("CloseButton")
-	local body = window:FindFirstChild("Body")
+	local closeButton = (header and header:FindFirstChild("CloseButton")) or window:FindFirstChild("CloseButton")
+	local body = get_window_body(window)
 	local placeToggle = body and body:FindFirstChild("PlaceToggleButton")
 	local deleteModeButton = body and body:FindFirstChild("DeleteModeButton")
 	local deleteSelectedButton = body and body:FindFirstChild("DeleteSelectedButton")
@@ -796,7 +787,7 @@ end
 local function wire_gui(gui: ScreenGui): ()
 	activeGui = gui
 	local window = gui:FindFirstChild(WINDOW_NAME)
-	if not window then
+	if not window or not window:IsA("GuiObject") then
 		return
 	end
 
