@@ -672,7 +672,7 @@ end
 local function wire_gui(gui: ScreenGui): ()
 	activeGui = gui
 	local window = gui:FindFirstChild(WINDOW_NAME)
-	if not window or not window:IsA("Frame") then
+	if not window then
 		return
 	end
 
@@ -681,20 +681,8 @@ local function wire_gui(gui: ScreenGui): ()
 end
 
 ------------------//INIT
-local existingGui = playerGui:FindFirstChild(GUI_NAME)
-if existingGui and existingGui:IsA("ScreenGui") then
-	task.defer(function()
-		wire_gui(existingGui)
-	end)
-end
-
-playerGui.ChildAdded:Connect(function(child)
-	if child.Name == GUI_NAME and child:IsA("ScreenGui") then
-		task.defer(function()
-			wire_gui(child)
-		end)
-	end
-end)
+local existingGui = playerGui:WaitForChild(GUI_NAME)
+wire_gui(existingGui)
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then
@@ -704,7 +692,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
 		return
 	end
-
+	
 	if deleteModeEnabled then
 		select_target_to_delete()
 		return
