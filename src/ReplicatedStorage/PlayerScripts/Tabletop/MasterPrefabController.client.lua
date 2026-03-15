@@ -12,7 +12,7 @@ local REMOTE_NAME: string = "MasterBuildEvent"
 local PREFAB_FOLDER_NAME: string = "Prefrab"
 local BUILD_FOLDER_NAME: string = "TabletopBuildParts"
 
-local HOLD_TO_SPRAY_SECONDS: number = 2
+local HOLD_TO_SPRAY_SECONDS: number = 1
 local FREQUENCY_MIN: number = 1
 local FREQUENCY_MAX: number = 12
 
@@ -52,12 +52,14 @@ local boundWindows: {[GuiObject]: boolean} = {}
 local selectedItemButton: TextButton? = nil
 local previewInstance: Instance? = nil
 local previewConnection: RBXScriptConnection? = nil
+local deleteSelectionBox: SelectionBox? = nil
 
 local ITEM_DEFAULT_COLOR = Color3.fromRGB(28, 31, 39)
 local ITEM_SELECTED_COLOR = Color3.fromRGB(201, 176, 62)
 
 local refresh_selected_label: (window: GuiObject) -> ()
 local refresh_toggles: (window: GuiObject) -> ()
+local is_valid_delete_target: (inst: Instance?) -> boolean
 
 ------------------//FUNCTIONS
 local function clear_container(container: Instance): ()
@@ -160,9 +162,14 @@ local function update_preview_transform(): ()
 	end
 
 	if previewInstance:IsA("Model") then
-		previewInstance:PivotTo(placeCFrame)
+		local currentPivot = previewInstance:GetPivot()
+		local _, extentsSize = previewInstance:GetBoundingBox()
+		local yOffset = math.max(0, extentsSize.Y * 0.5)
+		local targetPivot = placeCFrame * CFrame.new(0, yOffset, 0)
+		previewInstance:PivotTo(targetPivot * currentPivot.Rotation)
 	elseif previewInstance:IsA("BasePart") then
-		previewInstance.CFrame = placeCFrame
+		local yOffset = math.max(0, previewInstance.Size.Y * 0.5)
+		previewInstance.CFrame = placeCFrame * CFrame.new(0, yOffset, 0)
 	end
 end
 
@@ -175,6 +182,31 @@ local function clear_preview(): ()
 	if previewInstance then
 		previewInstance:Destroy()
 		previewInstance = nil
+	end
+end
+
+
+local function clear_delete_selection_box(): ()
+	if deleteSelectionBox then
+		deleteSelectionBox.Adornee = nil
+		deleteSelectionBox:Destroy()
+		deleteSelectionBox = nil
+	end
+end
+
+local function refresh_delete_selection_box(): ()
+	if selectedDeleteTarget and is_valid_delete_target(selectedDeleteTarget) then
+		if not deleteSelectionBox then
+			deleteSelectionBox = Instance.new("SelectionBox")
+			deleteSelectionBox.Name = "PrefabDeleteSelection"
+			deleteSelectionBox.LineThickness = 0.06
+			deleteSelectionBox.Color3 = Color3.fromRGB(255, 90, 90)
+			deleteSelectionBox.SurfaceTransparency = 0.85
+			deleteSelectionBox.Parent = workspace
+		end
+		deleteSelectionBox.Adornee = selectedDeleteTarget
+	else
+		clear_delete_selection_box()
 	end
 end
 
@@ -244,6 +276,8 @@ local function clear_selected_prefab(window: GuiObject): ()
 	end
 
 	clear_preview()
+	selectedDeleteTarget = nil
+	refresh_delete_selection_box()
 	refresh_selected_label(window)
 	refresh_toggles(window)
 end
@@ -282,7 +316,7 @@ local function sanitize_scale_range(window: GuiObject): (number, number)
 	return minValue, maxValue
 end
 
-local function is_valid_delete_target(inst: Instance?): boolean
+function is_valid_delete_target(inst: Instance?): boolean
 	if not inst then
 		return false
 	end
@@ -308,21 +342,28 @@ local function resolve_target_from_mouse(): Instance?
 		return nil
 	end
 
-	if target:GetAttribute("IsTabletopBuildPart") ~= true or target:GetAttribute("BuildKind") ~= "Prefab" then
-		return nil
-	end
-
 	local buildFolder = workspace:FindFirstChild(BUILD_FOLDER_NAME)
-	if not buildFolder then
-		return target
+	local cursor: Instance? = target
+	while cursor do
+		if is_valid_delete_target(cursor) then
+			if cursor:IsA("BasePart") then
+				local modelAncestor = cursor:FindFirstAncestorOfClass("Model")
+				if modelAncestor and (not buildFolder or modelAncestor.Parent == buildFolder) and is_valid_delete_target(modelAncestor) then
+					return modelAncestor
+				end
+			end
+
+			if buildFolder and cursor.Parent ~= buildFolder and not cursor:IsDescendantOf(buildFolder) then
+				cursor = cursor.Parent
+				continue
+			end
+
+			return cursor
+		end
+		cursor = cursor.Parent
 	end
 
-	local modelAncestor = target:FindFirstAncestorOfClass("Model")
-	if modelAncestor and modelAncestor.Parent == buildFolder then
-		return modelAncestor
-	end
-
-	return target
+	return nil
 end
 
 function refresh_selected_label(window: GuiObject): ()
@@ -605,12 +646,23 @@ local function select_target_to_delete(): ()
 		return
 	end
 
-	selectedDeleteTarget = resolve_target_from_mouse()
+	local resolved = resolve_target_from_mouse()
+	if selectedDeleteTarget and resolved == selectedDeleteTarget then
+		selectedDeleteTarget = nil
+	else
+		selectedDeleteTarget = resolved
+	end
+	refresh_delete_selection_box()
 	refresh_selected_label(window)
 end
 
 local function delete_selected_target(): ()
+	if (not selectedDeleteTarget or not is_valid_delete_target(selectedDeleteTarget)) and deleteModeEnabled then
+		selectedDeleteTarget = resolve_target_from_mouse()
+	end
+
 	if not selectedDeleteTarget or not is_valid_delete_target(selectedDeleteTarget) then
+		refresh_delete_selection_box()
 		return
 	end
 
@@ -620,6 +672,7 @@ local function delete_selected_target(): ()
 	})
 
 	selectedDeleteTarget = nil
+	refresh_delete_selection_box()
 	if activeGui then
 		local window = activeGui:FindFirstChild(WINDOW_NAME)
 		if window and window:IsA("GuiObject") then
@@ -634,6 +687,7 @@ local function delete_all_prefabs(): ()
 	})
 
 	selectedDeleteTarget = nil
+	refresh_delete_selection_box()
 	if activeGui then
 		local window = activeGui:FindFirstChild(WINDOW_NAME)
 		if window and window:IsA("GuiObject") then
@@ -725,8 +779,13 @@ local function wire_window_controls(gui: ScreenGui, window: GuiObject): ()
 			deleteModeEnabled = not deleteModeEnabled
 			if deleteModeEnabled then
 				placeModeEnabled = false
+				clear_preview()
+			else
+				selectedDeleteTarget = nil
+				refresh_delete_selection_box()
 			end
 			refresh_toggles(window)
+			refresh_selected_label(window)
 		end)
 	end
 
