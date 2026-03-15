@@ -2,7 +2,6 @@
 local Players: Players = game:GetService("Players")
 local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Lighting: Lighting = game:GetService("Lighting")
-local SoundService: SoundService = game:GetService("SoundService")
 
 
 ------------------//CONSTANTS
@@ -11,8 +10,6 @@ local PLAYER_TEAM_NAME: string = "Jogador"
 
 local REMOTE_NAME: string = "TabletopEvent"
 local DEFAULT_PRESET_NAME: string = "NeutralDay"
-local AUDIO_FOLDER_NAME: string = "TabletopAudio"
-local RAIN_SOUND_NAME: string = "RainAmbient"
 local MANAGED_ATTRIBUTE_NAME: string = "TabletopManaged"
 local CHARACTERS_FOLDER_NAME: string = "Characters"
 
@@ -320,33 +317,8 @@ local function set_clock_time(clockTime: number): ()
 	Lighting.ClockTime = normalizedClockTime
 end
 
-local function get_rain_sound(): Sound?
-	local audioFolder = SoundService:FindFirstChild(AUDIO_FOLDER_NAME)
-
-	if not audioFolder or not audioFolder:IsA("Folder") then
-		return nil
-	end
-
-	local rainSound = audioFolder:FindFirstChild(RAIN_SOUND_NAME)
-
-	if rainSound and rainSound:IsA("Sound") then
-		return rainSound
-	end
-
-	return nil
-end
-
 local function set_rain_enabled(isEnabled: boolean): ()
-	local rainSound = get_rain_sound()
-
 	state.rainEnabled = isEnabled
-
-	if not rainSound then
-		return
-	end
-
-	rainSound.Looped = true
-	rainSound.Playing = isEnabled
 end
 
 local function cleanup_combat_order(): ()
